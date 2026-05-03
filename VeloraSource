@@ -1,5 +1,5 @@
 -- Velora V2 — Open Source by Naru
--- https://github.com/Robloxblast/UI
+-- Discord: gojosatoru1230487
 
 local VeloraUI = {}
 local tween  = game:GetService("TweenService")
