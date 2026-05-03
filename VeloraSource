@@ -9,8 +9,10 @@ local Players   = game:GetService("Players")
 local RunSvc    = game:GetService("RunService")
 
 if _G.__VeloraUI_Running then
-	warn("[VeloraUI] Already running — ignoring duplicate load.")
-	return {}
+	-- destroy old UI if it exists, then allow reload
+	local old = game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("VeloraUI")
+	if old then old:Destroy() end
+	_G.__VeloraUI_Running = nil
 end
 _G.__VeloraUI_Running = true
 
