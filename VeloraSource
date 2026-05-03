@@ -826,7 +826,7 @@ function VeloraUI:CreateWindow(cfg)
 			end)
 		end
 	end
-
+print("useKey =", useKey, "| KeySystem cfg =", cfg.KeySystem)
 	if useKey then
 		showKeySystem(screen,keyCfg,revealWindow)
 	else
