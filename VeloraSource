@@ -721,17 +721,19 @@ function VeloraUI:CreateWindow(cfg)
 		TextXAlignment=Enum.TextXAlignment.Left,ClearTextOnFocus=false,ZIndex=11,Parent=searchBar})
 
 	-- body — ClipsDescendants=true fixes dropdown overflow
-local bodyFrame=newInst("ScrollingFrame",{Size=UDim2.new(1,0,1,-82),
-	Position=UDim2.new(0,0,0,82),BackgroundTransparency=1,BorderSizePixel=0,
-	ScrollBarThickness=4,
-	ScrollBarImageColor3=Color3.fromRGB(120,70,230),
-	ScrollBarInset=Enum.ScrollBarInset.None,
-	CanvasSize=UDim2.new(0,0,0,0),ZIndex=2,ClipsDescendants=true,Parent=win})
-padding(8,8,8,8,bodyFrame)
-local bodyLayout=listLayout(bodyFrame,6)
-bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-	bodyFrame.CanvasSize=UDim2.new(0,0,0,bodyLayout.AbsoluteContentSize.Y+16)
-end)
+local bodyFrame = newInst("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 1, -82),
+    Position = UDim2.new(0, 0, 0, 82),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(120, 70, 230),
+    -- ScrollBarInset = Enum.ScrollBarInset.None,  ← DELETE THIS LINE
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ZIndex = 2,
+    ClipsDescendants = true,
+    Parent = win
+})
 	-- element registry for search
 	local allElements={}
 	local function runSearch(query)
