@@ -1,13 +1,12 @@
--- Velora V2 — Open Source by Naru
--- Discord: gojosatoru1230487
+-- Velora V1 — Open Source by Naru
+-- https://github.com/Robloxblast/UI
 
 local VeloraUI = {}
-local tween   = game:GetService("TweenService")
-local input   = game:GetService("UserInputService")
-local http    = game:GetService("HttpService")
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local tween  = game:GetService("TweenService")
+local input  = game:GetService("UserInputService")
+local http   = game:GetService("HttpService")
 
+-- ── Single-instance guard ─────────────────────────────────────────────────────
 if _G.__VeloraUI_Running then
 	warn("[VeloraUI] Already running — ignoring duplicate load.")
 	return {}
@@ -24,7 +23,6 @@ local C = {
 	purpleFade = Color3.fromRGB(58,32,96),
 	textMain   = Color3.fromRGB(192,160,255),
 	textDim    = Color3.fromRGB(90,58,128),
-	textLight  = Color3.fromRGB(150,130,190),
 	green      = Color3.fromRGB(120,255,160),
 	red        = Color3.fromRGB(255,96,96),
 	yellow     = Color3.fromRGB(255,210,60),
@@ -33,1212 +31,1344 @@ local C = {
 
 local flags     = {}
 local saveItems = {}
-local autoSave  = false
-local screenRef = nil
+
+-- ─── helpers ──────────────────────────────────────────────────────────────────
 
 local function newInst(cls, props)
 	local o = Instance.new(cls)
-	for k,v in pairs(props) do o[k]=v end
+	for k, v in pairs(props) do o[k] = v end
 	return o
 end
-local function corner(r,p)
-	local c=Instance.new("UICorner");c.CornerRadius=UDim.new(0,r);c.Parent=p
+local function corner(r, p)
+	local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = p
 end
-local function stroke(col,thick,parent)
-	local s=Instance.new("UIStroke");s.Color=col;s.Thickness=thick;s.Parent=parent;return s
+local function stroke(col, thick, parent)
+	local s = Instance.new("UIStroke"); s.Color = col; s.Thickness = thick; s.Parent = parent; return s
 end
-local function padding(t,b,l,r,parent)
-	local p=Instance.new("UIPadding")
-	p.PaddingTop=UDim.new(0,t);p.PaddingBottom=UDim.new(0,b)
-	p.PaddingLeft=UDim.new(0,l);p.PaddingRight=UDim.new(0,r)
-	p.Parent=parent
+local function padding(t, b, l, r, parent)
+	local p = Instance.new("UIPadding")
+	p.PaddingTop = UDim.new(0, t); p.PaddingBottom = UDim.new(0, b)
+	p.PaddingLeft = UDim.new(0, l); p.PaddingRight = UDim.new(0, r)
+	p.Parent = parent
 end
-local function listLayout(parent,gap,dir)
-	local l=Instance.new("UIListLayout")
-	l.SortOrder=Enum.SortOrder.LayoutOrder
-	l.Padding=UDim.new(0,gap or 6)
-	l.FillDirection=dir or Enum.FillDirection.Vertical
-	l.Parent=parent;return l
+local function listLayout(parent, gap, dir)
+	local l = Instance.new("UIListLayout")
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	l.Padding = UDim.new(0, gap or 6)
+	l.FillDirection = dir or Enum.FillDirection.Vertical
+	l.Parent = parent; return l
 end
+
+-- ─── config save / load ───────────────────────────────────────────────────────
 
 local CONFIG_FOLDER = "VeloraUI_Configs"
-local CONFIG_FILE   = nil
+local CONFIG_FILE   = CONFIG_FOLDER .. "/config.json"
 
-local function ensureFolder(folder)
-	pcall(function() if not isfolder(folder) then makefolder(folder) end end)
+local function ensureFolder()
+	pcall(function()
+		if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end
+	end)
 end
+
 local function saveConfig()
-	if not CONFIG_FILE then return false end
-	ensureFolder(CONFIG_FOLDER)
-	local data={}
-	for flag,val in pairs(flags) do
-		local t=type(val)
-		if t=="boolean" or t=="number" or t=="string" then data[flag]=val
-		elseif t=="table" then
-			local safe=true
-			for _,v in ipairs(val) do if type(v)~="string" then safe=false;break end end
-			if safe then data[flag]=val end
+	ensureFolder()
+	local data = {}
+	for flag, val in pairs(flags) do
+		local t = type(val)
+		if t == "boolean" or t == "number" or t == "string" then
+			data[flag] = val
+		elseif t == "table" then
+			local safe = true
+			for _, v in ipairs(val) do
+				if type(v) ~= "string" then safe = false; break end
+			end
+			if safe then data[flag] = val end
 		end
 	end
-	local ok=pcall(function() writefile(CONFIG_FILE,http:JSONEncode(data)) end)
+	local ok, err = pcall(function()
+		writefile(CONFIG_FILE, http:JSONEncode(data))
+	end)
+	if not ok then warn("[VeloraUI] Save failed:", err) end
 	return ok
 end
+
 local function loadConfig()
-	if not CONFIG_FILE then return nil end
-	local ok,raw=pcall(function() return readfile(CONFIG_FILE) end)
-	if not ok or not raw or raw=="" then return nil end
-	local ok2,data=pcall(function() return http:JSONDecode(raw) end)
-	if not ok2 or type(data)~="table" then return nil end
+	local ok, raw = pcall(function() return readfile(CONFIG_FILE) end)
+	if not ok or not raw or raw == "" then return nil end
+	local ok2, data = pcall(function() return http:JSONDecode(raw) end)
+	if not ok2 or type(data) ~= "table" then return nil end
 	return data
 end
-local function triggerAutoSave()
-	if autoSave then pcall(saveConfig) end
-end
 
--- ─── notifications ────────────────────────────────────────────────────────────
-local NOTIF_W=230;local NOTIF_H=54;local NOTIF_GAP=8;local NOTIF_DUR=3.2;local MAX_NOTIFS=5
-local notifActive={};local notifScreen=nil
+-- ─── notification system ──────────────────────────────────────────────────────
 
-local function reflow()
-	for i,entry in ipairs(notifActive) do
-		local y=-(i*(NOTIF_H+NOTIF_GAP))
-		tween:Create(entry.frame,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{
-			Position=UDim2.new(1,-(NOTIF_W+10),1,y)
-		}):Play()
+local NOTIF_W    = 230
+local NOTIF_H    = 54
+local NOTIF_GAP  = 8
+local NOTIF_DUR  = 3.2
+local MAX_NOTIFS = 5
+
+local function buildNotifSystem(screen)
+	local active = {}
+
+	local function reflow()
+		for i, entry in ipairs(active) do
+			local y = -(i * (NOTIF_H + NOTIF_GAP))
+			tween:Create(entry.frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = UDim2.new(1, -(NOTIF_W + 10), 1, y)
+			}):Play()
+		end
 	end
-end
-local function removeEntry(entry)
-	for i,e in ipairs(notifActive) do if e==entry then table.remove(notifActive,i);break end end
-	reflow()
-end
-local function notify(title,content,col)
-	if not notifScreen then return end
-	col=col or C.purple;title=tostring(title or "Notification");content=tostring(content or "")
-	if #notifActive>=MAX_NOTIFS then
-		local oldest=notifActive[1]
-		tween:Create(oldest.frame,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
-			Position=UDim2.new(1,20,1,oldest.frame.Position.Y.Offset)
-		}):Play()
-		task.delay(0.22,function() if oldest.frame.Parent then oldest.frame:Destroy() end end)
-		removeEntry(oldest)
+
+	local function removeEntry(entry)
+		for i, e in ipairs(active) do
+			if e == entry then table.remove(active, i); break end
+		end
+		reflow()
 	end
-	local slot=#notifActive+1
-	local startY=-(slot*(NOTIF_H+NOTIF_GAP))
-	local notif=newInst("Frame",{
-		Size=UDim2.new(0,NOTIF_W,0,NOTIF_H),
-		Position=UDim2.new(1,20,1,startY),
-		BackgroundColor3=Color3.fromRGB(10,8,22),
-		BorderSizePixel=0,ZIndex=100,Parent=notifScreen,
-	});corner(12,notif);stroke(col,1.2,notif)
-	local iconBox=newInst("Frame",{
-		Size=UDim2.new(0,36,0,36),Position=UDim2.new(0,9,0.5,-18),
-		BackgroundColor3=Color3.fromRGB(20,14,38),
-		BorderSizePixel=0,ZIndex=101,Parent=notif,
-	});corner(8,iconBox);stroke(col,1,iconBox)
-	local ic=newInst("Frame",{
-		Size=UDim2.new(0,18,0,18),Position=UDim2.new(0.5,-9,0.5,-9),
-		BackgroundColor3=col,BorderSizePixel=0,ZIndex=102,Parent=iconBox,
-	});corner(99,ic)
-	newInst("Frame",{
-		Size=UDim2.new(0,8,0,8),Position=UDim2.new(0.5,-4,0.5,-4),
-		BackgroundColor3=Color3.fromRGB(10,8,22),BorderSizePixel=0,ZIndex=103,Parent=ic,
-	})
-	newInst("TextLabel",{
-		Size=UDim2.new(1,-58,0,20),Position=UDim2.new(0,52,0,8),
-		BackgroundTransparency=1,Text=title,TextColor3=col,
-		TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.GothamBold,
-		TextSize=13,ZIndex=101,Parent=notif,
-	})
-	newInst("TextLabel",{
-		Size=UDim2.new(1,-58,0,16),Position=UDim2.new(0,52,0,28),
-		BackgroundTransparency=1,Text=content,
-		TextColor3=Color3.fromRGB(130,110,170),
-		TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,
-		TextSize=11,ZIndex=101,Parent=notif,
-	})
-	local entry={frame=notif}
-	table.insert(notifActive,entry)
-	tween:Create(notif,TweenInfo.new(0.32,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-		Position=UDim2.new(1,-(NOTIF_W+10),1,startY)
-	}):Play()
-	task.delay(NOTIF_DUR,function()
-		if not notif.Parent then return end
-		tween:Create(notif,TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
-			Position=UDim2.new(1,20,1,notif.Position.Y.Offset)
+
+	return function(title, content, col)
+		col     = col or C.purple
+		title   = title or "Notification"
+		content = content or ""
+
+		if #active >= MAX_NOTIFS then
+			local oldest = active[1]
+			tween:Create(oldest.frame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				Position = UDim2.new(1, 20, 1, oldest.frame.Position.Y.Offset)
+			}):Play()
+			task.delay(0.22, function() if oldest.frame.Parent then oldest.frame:Destroy() end end)
+			removeEntry(oldest)
+		end
+
+		local slot  = #active + 1
+		local startY = -(slot * (NOTIF_H + NOTIF_GAP))
+
+		local notif = newInst("Frame", {
+			Size = UDim2.new(0, NOTIF_W, 0, NOTIF_H),
+			Position = UDim2.new(1, 20, 1, startY),
+			BackgroundColor3 = Color3.fromRGB(10, 8, 22),
+			BorderSizePixel = 0, ZIndex = 100, Parent = screen,
+		})
+		corner(12, notif); stroke(col, 1.2, notif)
+
+		local iconBox = newInst("Frame", {
+			Size = UDim2.new(0, 36, 0, 36), Position = UDim2.new(0, 9, 0.5, -18),
+			BackgroundColor3 = Color3.fromRGB(20, 14, 38),
+			BorderSizePixel = 0, ZIndex = 101, Parent = notif,
+		}); corner(8, iconBox); stroke(col, 1, iconBox)
+
+		local ic = newInst("Frame", {
+			Size = UDim2.new(0, 18, 0, 18), Position = UDim2.new(0.5, -9, 0.5, -9),
+			BackgroundColor3 = col, BorderSizePixel = 0, ZIndex = 102, Parent = iconBox,
+		}); corner(99, ic)
+		newInst("Frame", {
+			Size = UDim2.new(0, 8, 0, 8), Position = UDim2.new(0.5, -4, 0.5, -4),
+			BackgroundColor3 = Color3.fromRGB(10, 8, 22), BorderSizePixel = 0, ZIndex = 103, Parent = ic,
+		})
+
+		newInst("TextLabel", {
+			Size = UDim2.new(1, -58, 0, 20), Position = UDim2.new(0, 52, 0, 8),
+			BackgroundTransparency = 1, Text = tostring(title), TextColor3 = col,
+			TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold,
+			TextSize = 13, ZIndex = 101, Parent = notif,
+		})
+		newInst("TextLabel", {
+			Size = UDim2.new(1, -58, 0, 16), Position = UDim2.new(0, 52, 0, 28),
+			BackgroundTransparency = 1, Text = tostring(content),
+			TextColor3 = Color3.fromRGB(130, 110, 170),
+			TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Gotham,
+			TextSize = 11, ZIndex = 101, Parent = notif,
+		})
+
+		local entry = { frame = notif }
+		table.insert(active, entry)
+
+		tween:Create(notif, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Position = UDim2.new(1, -(NOTIF_W + 10), 1, startY)
 		}):Play()
-		task.delay(0.28,function()
-			if notif.Parent then notif:Destroy() end
-			removeEntry(entry)
+
+		task.delay(NOTIF_DUR, function()
+			if not notif.Parent then return end
+			tween:Create(notif, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				Position = UDim2.new(1, 20, 1, notif.Position.Y.Offset)
+			}):Play()
+			task.delay(0.28, function()
+				if notif.Parent then notif:Destroy() end
+				removeEntry(entry)
+			end)
 		end)
-	end)
-end
-
--- ─── config banner ────────────────────────────────────────────────────────────
-local function showConfigBanner(win)
-	local pill=newInst("Frame",{
-		Size=UDim2.new(0,0,0,0),Position=UDim2.new(0.5,0,0,-50),
-		AnchorPoint=Vector2.new(0.5,0),BackgroundColor3=C.purpleFade,
-		BorderSizePixel=0,ZIndex=20,Visible=true,Parent=win,
-	});corner(12,pill);stroke(C.border,1,pill)
-	newInst("TextLabel",{
-		Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,10,0,0),
-		BackgroundTransparency=1,Text="✓ Config loaded",TextColor3=C.green,
-		Font=Enum.Font.GothamBold,TextSize=11,
-		TextXAlignment=Enum.TextXAlignment.Center,ZIndex=21,Parent=pill,
-	})
-	tween:Create(pill,TweenInfo.new(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-		Size=UDim2.new(0,140,0,28),Position=UDim2.new(0.5,0,0,-36),
-	}):Play()
-	task.delay(2.5,function()
-		tween:Create(pill,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
-			Size=UDim2.new(0,0,0,0),Position=UDim2.new(0.5,0,0,-50),
-		}):Play()
-		task.delay(0.35,function() pill:Destroy() end)
-	end)
+	end
 end
 
 -- ─── confirm dialog ───────────────────────────────────────────────────────────
-local function buildConfirmDialog(screen,onYes)
-	local overlay=newInst("Frame",{
-		Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.fromRGB(0,0,0),
-		BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=300,Parent=screen,
+
+local function buildConfirmDialog(screen, onYes, onNo)
+	local overlay = newInst("Frame", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.5,
+		BorderSizePixel = 0, ZIndex = 300, Parent = screen,
 	})
-	local box=newInst("Frame",{
-		Size=UDim2.new(0,280,0,130),Position=UDim2.new(0.5,-140,0.5,-65),
-		BackgroundColor3=Color3.fromRGB(12,10,24),BackgroundTransparency=1,
-		BorderSizePixel=0,ZIndex=301,Parent=overlay,
-	});corner(14,box);stroke(C.border,1.5,box)
-	newInst("TextLabel",{
-		Size=UDim2.new(1,0,0,40),Position=UDim2.new(0,0,0,16),
-		BackgroundTransparency=1,Text="Are you sure you want to close the UI?",
-		TextColor3=C.textMain,Font=Enum.Font.GothamBold,
-		TextSize=13,TextWrapped=true,TextXAlignment=Enum.TextXAlignment.Center,
-		ZIndex=302,Parent=box,
+
+	local box = newInst("Frame", {
+		Size = UDim2.new(0, 280, 0, 130),
+		Position = UDim2.new(0.5, -140, 0.5, -65),
+		BackgroundColor3 = Color3.fromRGB(12, 10, 24),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0, ZIndex = 301, Parent = overlay,
+	}); corner(14, box); stroke(C.border, 1.5, box)
+
+	newInst("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 40),
+		Position = UDim2.new(0, 0, 0, 16),
+		BackgroundTransparency = 1,
+		Text = "Are you sure you want to close the UI?",
+		TextColor3 = C.textMain, Font = Enum.Font.GothamBold,
+		TextSize = 13, TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 302, Parent = box,
 	})
-	local yesBtn=newInst("TextButton",{
-		Size=UDim2.new(0,110,0,34),Position=UDim2.new(0,18,0,76),
-		BackgroundColor3=Color3.fromRGB(26,50,26),BorderSizePixel=0,
-		Text="Yes",TextColor3=C.green,Font=Enum.Font.GothamBold,TextSize=13,
-		ZIndex=302,Parent=box,
-	});corner(8,yesBtn);stroke(C.green,1,yesBtn)
-	local noBtn=newInst("TextButton",{
-		Size=UDim2.new(0,110,0,34),Position=UDim2.new(1,-128,0,76),
-		BackgroundColor3=Color3.fromRGB(46,14,14),BorderSizePixel=0,
-		Text="No",TextColor3=C.red,Font=Enum.Font.GothamBold,TextSize=13,
-		ZIndex=302,Parent=box,
-	});corner(8,noBtn);stroke(C.red,1,noBtn)
-	tween:Create(box,TweenInfo.new(0.3,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{BackgroundTransparency=0}):Play()
+
+	local yesBtn = newInst("TextButton", {
+		Size = UDim2.new(0, 110, 0, 34),
+		Position = UDim2.new(0, 18, 0, 76),
+		BackgroundColor3 = Color3.fromRGB(26, 50, 26),
+		BorderSizePixel = 0, Text = "Yes", TextColor3 = C.green,
+		Font = Enum.Font.GothamBold, TextSize = 13, ZIndex = 302, Parent = box,
+	}); corner(8, yesBtn); stroke(C.green, 1, yesBtn)
+
+	local noBtn = newInst("TextButton", {
+		Size = UDim2.new(0, 110, 0, 34),
+		Position = UDim2.new(1, -128, 0, 76),
+		BackgroundColor3 = Color3.fromRGB(46, 14, 14),
+		BorderSizePixel = 0, Text = "No", TextColor3 = C.red,
+		Font = Enum.Font.GothamBold, TextSize = 13, ZIndex = 302, Parent = box,
+	}); corner(8, noBtn); stroke(C.red, 1, noBtn)
+
+	tween:Create(box, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 0,
+		Position = UDim2.new(0.5, -140, 0.5, -65),
+	}):Play()
+
 	local function dismiss(cb)
-		tween:Create(box,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
-			BackgroundTransparency=1,Position=UDim2.new(0.5,-140,0.55,-65),
+		tween:Create(box, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, -140, 0.55, -65),
 		}):Play()
-		tween:Create(overlay,TweenInfo.new(0.2),{BackgroundTransparency=1}):Play()
-		task.delay(0.22,function() overlay:Destroy();if cb then cb() end end)
+		tween:Create(overlay, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.22, function()
+			overlay:Destroy()
+			if cb then cb() end
+		end)
 	end
+
 	yesBtn.MouseButton1Click:Connect(function() dismiss(onYes) end)
-	noBtn.MouseButton1Click:Connect(function() dismiss(nil) end)
+	noBtn.MouseButton1Click:Connect(function() dismiss(onNo) end)
 end
 
--- ─── profile panel ────────────────────────────────────────────────────────────
-local function buildProfilePanel(screen, win)
-	local me = Players.LocalPlayer
-	local panelOpen = false
-	local anonymous = false
+-- ─── key system ───────────────────────────────────────────────────────────────
 
-	local panel = newInst("Frame",{
-		Size=UDim2.new(0,250,0,0),
-		Position=UDim2.new(1,-260,0,50),
-		BackgroundColor3=Color3.fromRGB(10,8,22),
-		BackgroundTransparency=1,BorderSizePixel=0,
-		ZIndex=50,ClipsDescendants=true,Visible=false,Parent=win,
-	});corner(12,panel);stroke(C.border,1.2,panel)
+local function showKeySystem(screen, keyCfg, onSuccess)
+	local title    = keyCfg.Title    or "Velora UI"
+	local subtitle = keyCfg.Subtitle or "Key System"
+	local note     = keyCfg.Note     or "No method of obtaining the key is provided."
+	local fileName = (keyCfg.FileName or "VeloraKey") .. ".txt"
+	local saveKey  = keyCfg.SaveKey ~= false
+	local keyFile  = CONFIG_FOLDER .. "/" .. fileName
+	local validKeys = keyCfg.Key or {}
+	local getKeyUrl = keyCfg.GetKeyFromSite -- optional URL string
 
-	-- avatar
-	local avatarBg=newInst("Frame",{
-		Size=UDim2.new(0,52,0,52),Position=UDim2.new(0,12,0,14),
-		BackgroundColor3=Color3.fromRGB(26,14,52),BorderSizePixel=0,ZIndex=52,Parent=panel,
-	});corner(10,avatarBg);stroke(C.border,1.2,avatarBg)
-	local avatarImg=newInst("ImageLabel",{
-		Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Image="",ZIndex=53,Parent=avatarBg,
-	});corner(10,avatarImg)
-
-	task.spawn(function()
-		local ok,url=pcall(function()
-			return Players:GetUserThumbnailAsync(me.UserId,Enum.ThumbnailType.AvatarBust,Enum.ThumbnailSize.Size150x150)
-		end)
-		if ok and url then avatarImg.Image=url end
-	end)
-
-	-- name labels
-	newInst("TextLabel",{
-		Size=UDim2.new(1,-76,0,14),Position=UDim2.new(0,72,0,14),
-		BackgroundTransparency=1,Text="Welcome back,",TextColor3=C.textDim,
-		TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,TextSize=10,ZIndex=52,Parent=panel,
-	})
-	local displayNameLbl=newInst("TextLabel",{
-		Size=UDim2.new(1,-76,0,18),Position=UDim2.new(0,72,0,28),
-		BackgroundTransparency=1,Text=me.DisplayName,TextColor3=C.textMain,
-		TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.GothamBold,TextSize=14,
-		TextTruncate=Enum.TextTruncate.AtEnd,ZIndex=52,Parent=panel,
-	})
-	local usernameLbl=newInst("TextLabel",{
-		Size=UDim2.new(1,-76,0,13),Position=UDim2.new(0,72,0,48),
-		BackgroundTransparency=1,Text="@"..me.Name,TextColor3=C.purpleDim,
-		TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,TextSize=10,ZIndex=52,Parent=panel,
-	})
-
-	-- divider 1
-	newInst("Frame",{
-		Size=UDim2.new(1,-24,0,1),Position=UDim2.new(0,12,0,78),
-		BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=52,Parent=panel,
-	})
-
-	-- info rows
-	local function infoRow(label,value,yPos)
-		newInst("TextLabel",{
-			Size=UDim2.new(0,80,0,22),Position=UDim2.new(0,12,0,yPos),
-			BackgroundTransparency=1,Text=label,TextColor3=C.textDim,
-			TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,TextSize=10,ZIndex=52,Parent=panel,
-		})
-		return newInst("TextLabel",{
-			Size=UDim2.new(1,-92,0,22),Position=UDim2.new(0,92,0,yPos),
-			BackgroundTransparency=1,Text=value,TextColor3=C.textMain,
-			TextXAlignment=Enum.TextXAlignment.Right,Font=Enum.Font.GothamBold,TextSize=10,
-			TextTruncate=Enum.TextTruncate.AtEnd,ZIndex=52,Parent=panel,
-		})
+	-- If SaveKey is on and a saved key file exists, try it first
+	if saveKey then
+		ensureFolder()
+		local ok, saved = pcall(function() return readfile(keyFile) end)
+		if ok and saved and saved ~= "" then
+			-- Validate saved key against list
+			local trimmed = saved:match("^%s*(.-)%s*$")
+			for _, k in ipairs(validKeys) do
+				local resolvedKey = k
+				-- If key looks like a URL, fetch it
+				if type(k) == "string" and (k:sub(1,4) == "http") and keyCfg.GrabKeyFromSite then
+					local s, r = pcall(function() return game:HttpGet(k) end)
+					if s then resolvedKey = r:match("^%s*(.-)%s*$") end
+				end
+				if trimmed == resolvedKey then
+					task.defer(onSuccess)
+					return
+				end
+			end
+		end
 	end
 
-	local execName="Unknown"
-	if identifyexecutor then local ok,n=pcall(identifyexecutor);if ok and n then execName=tostring(n) end end
-	local isMob=input.TouchEnabled and not input.KeyboardEnabled
+	-- ── Build the key UI ──────────────────────────────────────────────────────
 
-	infoRow("Executor",execName,88)
-	infoRow("Device",isMob and "Mobile" or "PC",112)
-	local userIdLbl=infoRow("User ID",tostring(me.UserId),136)
-
-	-- divider 2
-	newInst("Frame",{
-		Size=UDim2.new(1,-24,0,1),Position=UDim2.new(0,12,0,166),
-		BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=52,Parent=panel,
+	local overlay = newInst("Frame", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(6, 4, 14),
+		BorderSizePixel = 0, ZIndex = 400, Parent = screen,
 	})
 
-	-- anonymous toggle row
-	local anonRow=newInst("Frame",{
-		Size=UDim2.new(1,-24,0,32),Position=UDim2.new(0,12,0,174),
-		BackgroundColor3=Color3.fromRGB(17,12,30),BorderSizePixel=0,ZIndex=52,Parent=panel,
-	});corner(8,anonRow)
-	newInst("TextLabel",{
-		Size=UDim2.new(1,-50,1,0),Position=UDim2.new(0,10,0,0),
-		BackgroundTransparency=1,Text="Go Anonymous",TextColor3=C.textLight,
-		TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,TextSize=11,ZIndex=53,Parent=anonRow,
-	})
-	local anonTrack=newInst("Frame",{
-		Size=UDim2.new(0,36,0,20),Position=UDim2.new(1,-44,0.5,-10),
-		BackgroundColor3=Color3.fromRGB(26,26,46),BorderSizePixel=0,ZIndex=53,Parent=anonRow,
-	});corner(99,anonTrack);stroke(Color3.fromRGB(100,50,220),1,anonTrack)
-	local anonThumb=newInst("Frame",{
-		Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,2,0.5,-7),
-		BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=54,Parent=anonTrack,
-	});corner(99,anonThumb)
+	-- Central card
+	local card = newInst("Frame", {
+		Size = UDim2.new(0, 340, 0, 290),
+		Position = UDim2.new(0.5, -170, 0.5, -145),
+		BackgroundColor3 = Color3.fromRGB(12, 10, 24),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0, ZIndex = 401, Parent = overlay,
+	}); corner(16, card); stroke(C.border, 1.5, card)
 
-	-- divider 3
-	newInst("Frame",{
-		Size=UDim2.new(1,-24,0,1),Position=UDim2.new(0,12,0,214),
-		BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=52,Parent=panel,
-	})
+	-- Logo circle at top
+	local logoCircle = newInst("Frame", {
+		Size = UDim2.new(0, 64, 0, 64),
+		Position = UDim2.new(0.5, -32, 0, -32),
+		BackgroundColor3 = Color3.fromRGB(26, 14, 52),
+		BorderSizePixel = 0, ZIndex = 403, Parent = card,
+	}); corner(99, logoCircle); stroke(C.border, 1.5, logoCircle)
 
-	-- clock
-	local clockLbl=newInst("TextLabel",{
-		Size=UDim2.new(1,0,0,28),Position=UDim2.new(0,0,0,222),
-		BackgroundTransparency=1,Text="",TextColor3=C.purple,
-		TextXAlignment=Enum.TextXAlignment.Center,
-		Font=Enum.Font.GothamBold,TextSize=16,ZIndex=52,Parent=panel,
-	})
-	local dateLbl=newInst("TextLabel",{
-		Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,0,0,250),
-		BackgroundTransparency=1,Text="",TextColor3=C.textDim,
-		TextXAlignment=Enum.TextXAlignment.Center,
-		Font=Enum.Font.Gotham,TextSize=10,ZIndex=52,Parent=panel,
+	newInst("TextLabel", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Text = title:sub(1, 3):upper(),
+		TextColor3 = C.purple,
+		Font = Enum.Font.GothamBold,
+		TextSize = 20, ZIndex = 404, Parent = logoCircle,
 	})
 
-	local MONTHS={"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"}
-	local clockConn=RunService.Heartbeat:Connect(function()
-		if not panel.Parent then return end
-		local t=os.date("*t")
-		local h=t.hour;local ampm=h>=12 and "PM" or "AM"
-		h=h%12;if h==0 then h=12 end
-		if not anonymous then
-			clockLbl.Text=string.format("%d:%02d:%02d %s",h,t.min,t.sec,ampm)
-			dateLbl.Text=MONTHS[t.month].." "..string.format("%02d",t.day)..", "..t.year
+	-- Title
+	newInst("TextLabel", {
+		Size = UDim2.new(1, -24, 0, 28),
+		Position = UDim2.new(0, 12, 0, 46),
+		BackgroundTransparency = 1,
+		Text = "Verify Your Key",
+		TextColor3 = C.textMain,
+		Font = Enum.Font.GothamBold,
+		TextSize = 18,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 402, Parent = card,
+	})
+
+	-- Subtitle / note
+	newInst("TextLabel", {
+		Size = UDim2.new(1, -24, 0, 16),
+		Position = UDim2.new(0, 12, 0, 76),
+		BackgroundTransparency = 1,
+		Text = "Enter your key below to access " .. title,
+		TextColor3 = C.textDim,
+		Font = Enum.Font.Gotham,
+		TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = true,
+		ZIndex = 402, Parent = card,
+	})
+
+	-- KEY label + input row
+	local inputRow = newInst("Frame", {
+		Size = UDim2.new(1, -24, 0, 36),
+		Position = UDim2.new(0, 12, 0, 104),
+		BackgroundColor3 = C.inputBg,
+		BorderSizePixel = 0, ZIndex = 402, Parent = card,
+	}); corner(8, inputRow); stroke(C.border, 1, inputRow)
+
+	newInst("TextLabel", {
+		Size = UDim2.new(0, 38, 1, 0),
+		Position = UDim2.new(0, 0, 0, 0),
+		BackgroundColor3 = Color3.fromRGB(30, 18, 58),
+		BorderSizePixel = 0,
+		Text = "KEY",
+		TextColor3 = C.purple,
+		Font = Enum.Font.GothamBold,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 403, Parent = inputRow,
+	}); corner(8, inputRow:FindFirstChildOfClass("TextLabel") or inputRow)
+
+	-- rounded left side label
+	local keyTag = newInst("TextLabel", {
+		Size = UDim2.new(0, 38, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(30, 18, 58),
+		BorderSizePixel = 0,
+		Text = "KEY",
+		TextColor3 = C.purple,
+		Font = Enum.Font.GothamBold,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 403, Parent = inputRow,
+	}); corner(6, keyTag)
+	-- fill right corners of tag
+	newInst("Frame", {
+		Size = UDim2.new(0, 8, 1, 0),
+		Position = UDim2.new(1, -8, 0, 0),
+		BackgroundColor3 = Color3.fromRGB(30, 18, 58),
+		BorderSizePixel = 0, ZIndex = 402, Parent = keyTag,
+	})
+
+	local keyBox = newInst("TextBox", {
+		Size = UDim2.new(1, -48, 1, 0),
+		Position = UDim2.new(0, 46, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "",
+		PlaceholderText = "Enter your verification key...",
+		PlaceholderColor3 = C.textDim,
+		TextColor3 = C.textMain,
+		Font = Enum.Font.Gotham,
+		TextSize = 11,
+		ClearTextOnFocus = false,
+		ZIndex = 404, Parent = inputRow,
+	}); padding(0, 0, 4, 8, keyBox)
+
+	-- Status label (shows error / success messages)
+	local statusLbl = newInst("TextLabel", {
+		Size = UDim2.new(1, -24, 0, 14),
+		Position = UDim2.new(0, 12, 0, 146),
+		BackgroundTransparency = 1,
+		Text = note,
+		TextColor3 = C.textDim,
+		Font = Enum.Font.Gotham,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = true,
+		ZIndex = 402, Parent = card,
+	})
+
+	-- GET KEY button
+	local getKeyBtn = newInst("TextButton", {
+		Size = UDim2.new(0.46, -6, 0, 38),
+		Position = UDim2.new(0, 12, 0, 176),
+		BackgroundColor3 = Color3.fromRGB(22, 14, 42),
+		BorderSizePixel = 0,
+		Text = "Get Key",
+		TextColor3 = C.textMain,
+		Font = Enum.Font.GothamBold,
+		TextSize = 13,
+		ZIndex = 402, Parent = card,
+	}); corner(8, getKeyBtn); stroke(C.border, 1, getKeyBtn)
+
+	-- VERIFY KEY button
+	local verifyBtn = newInst("TextButton", {
+		Size = UDim2.new(0.54, -6, 0, 38),
+		Position = UDim2.new(0.46, -6, 0, 176),
+		BackgroundColor3 = C.purple,
+		BorderSizePixel = 0,
+		Text = "Verify Key",
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		Font = Enum.Font.GothamBold,
+		TextSize = 13,
+		ZIndex = 402, Parent = card,
+	}); corner(8, verifyBtn)
+
+	-- Bottom note row
+	local noteRow = newInst("Frame", {
+		Size = UDim2.new(1, -24, 0, 34),
+		Position = UDim2.new(0, 12, 0, 228),
+		BackgroundColor3 = Color3.fromRGB(20, 14, 38),
+		BorderSizePixel = 0, ZIndex = 402, Parent = card,
+	}); corner(8, noteRow); stroke(C.purpleDim, 1, noteRow)
+
+	newInst("TextLabel", {
+		Size = UDim2.new(0.6, 0, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "Buy Premium Access",
+		TextColor3 = C.textMain,
+		Font = Enum.Font.GothamBold,
+		TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 403, Parent = noteRow,
+	})
+	newInst("TextLabel", {
+		Size = UDim2.new(0.6, 0, 0, 14),
+		Position = UDim2.new(0, 10, 0, 17),
+		BackgroundTransparency = 1,
+		Text = "Keyless | Priority updates | Premium features",
+		TextColor3 = C.textDim,
+		Font = Enum.Font.Gotham,
+		TextSize = 9,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 403, Parent = noteRow,
+	})
+
+	local buyBtn = newInst("TextButton", {
+		Size = UDim2.new(0, 60, 0, 24),
+		Position = UDim2.new(1, -68, 0.5, -12),
+		BackgroundColor3 = C.yellow,
+		BorderSizePixel = 0,
+		Text = "Buy",
+		TextColor3 = Color3.fromRGB(20, 14, 0),
+		Font = Enum.Font.GothamBold,
+		TextSize = 12,
+		ZIndex = 403, Parent = noteRow,
+	}); corner(6, buyBtn)
+
+	-- Bottom bar with discord link
+	newInst("TextLabel", {
+		Size = UDim2.new(0.5, 0, 0, 16),
+		Position = UDim2.new(0, 12, 1, -20),
+		BackgroundTransparency = 1,
+		Text = "Discord",
+		TextColor3 = C.textDim,
+		Font = Enum.Font.GothamBold,
+		TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 402, Parent = card,
+	})
+
+	-- entrance animation
+	tween:Create(card, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 0,
+	}):Play()
+
+	-- ── Logic ─────────────────────────────────────────────────────────────────
+
+	local function setStatus(msg, col)
+		statusLbl.Text = msg
+		statusLbl.TextColor3 = col or C.textDim
+	end
+
+	local function resolveKeys()
+		local resolved = {}
+		for _, k in ipairs(validKeys) do
+			if type(k) == "string" and (k:sub(1, 4) == "http") and keyCfg.GrabKeyFromSite then
+				local ok, r = pcall(function() return game:HttpGet(k) end)
+				if ok then table.insert(resolved, r:match("^%s*(.-)%s*$")) end
+			else
+				table.insert(resolved, k)
+			end
 		end
-	end)
-	screen.Destroying:Connect(function() clockConn:Disconnect() end)
+		return resolved
+	end
 
-	-- anonymous toggle logic
-	anonTrack.InputBegan:Connect(function(i)
-		if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end
-		anonymous=not anonymous
-		if anonymous then
-			-- hide sensitive info
-			displayNameLbl.Text="Anonymous"
-			usernameLbl.Text="@hidden"
-			userIdLbl.Text="••••••••"
-			clockLbl.Text="••:••:•• ••"
-			dateLbl.Text="••• ••, ••••"
-			tween:Create(anonThumb,TweenInfo.new(0.18),{Position=UDim2.new(0,18,0.5,-7),BackgroundColor3=C.purple}):Play()
-			tween:Create(anonTrack,TweenInfo.new(0.18),{BackgroundColor3=Color3.fromRGB(42,26,78)}):Play()
+	local function dismiss()
+		tween:Create(card, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, -170, 0.45, -145),
+		}):Play()
+		tween:Create(overlay, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.35, function() overlay:Destroy() end)
+	end
+
+	getKeyBtn.MouseButton1Click:Connect(function()
+		if getKeyUrl then
+			-- Open link (works in some executors)
+			pcall(function() setclipboard(getKeyUrl) end)
+			setStatus("Key link copied to clipboard!", C.yellow)
+		elseif keyCfg.GetKeyUrl then
+			pcall(function() setclipboard(keyCfg.GetKeyUrl) end)
+			setStatus("Key link copied to clipboard!", C.yellow)
 		else
-			-- restore
-			displayNameLbl.Text=me.DisplayName
-			usernameLbl.Text="@"..me.Name
-			userIdLbl.Text=tostring(me.UserId)
-			tween:Create(anonThumb,TweenInfo.new(0.18),{Position=UDim2.new(0,2,0.5,-7),BackgroundColor3=C.purpleFade}):Play()
-			tween:Create(anonTrack,TweenInfo.new(0.18),{BackgroundColor3=Color3.fromRGB(26,26,46)}):Play()
+			setStatus("No key URL configured by the script author.", C.red)
 		end
 	end)
 
-	local PANEL_H=274
+	verifyBtn.MouseButton1Click:Connect(function()
+		local entered = keyBox.Text:match("^%s*(.-)%s*$")
+		if entered == "" then
+			setStatus("Please enter a key first.", C.red)
+			return
+		end
 
-	local function openPanel()
-		panelOpen=true;panel.Visible=true
-		panel.BackgroundTransparency=1;panel.Size=UDim2.new(0,250,0,0)
-		tween:Create(panel,TweenInfo.new(0.35,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-			Size=UDim2.new(0,250,0,PANEL_H),BackgroundTransparency=0,
-		}):Play()
-	end
-	local function closePanel()
-		panelOpen=false
-		tween:Create(panel,TweenInfo.new(0.22,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
-			Size=UDim2.new(0,250,0,0),BackgroundTransparency=1,
-		}):Play()
-		task.delay(0.25,function() if not panelOpen then panel.Visible=false end end)
-	end
+		setStatus("Verifying...", C.yellow)
+		tween:Create(verifyBtn, TweenInfo.new(0.1), { BackgroundColor3 = Color3.fromRGB(100, 70, 200) }):Play()
 
-	return {open=openPanel,close=closePanel,isOpen=function() return panelOpen end}
+		task.spawn(function()
+			local keys = resolveKeys()
+			local valid = false
+			for _, k in ipairs(keys) do
+				if entered == k then valid = true; break end
+			end
+
+			if valid then
+				setStatus("Key accepted! Loading...", C.green)
+				tween:Create(verifyBtn, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(40, 160, 80) }):Play()
+				if saveKey then
+					ensureFolder()
+					pcall(function() writefile(keyFile, entered) end)
+				end
+				task.delay(0.8, function()
+					dismiss()
+					task.delay(0.4, onSuccess)
+				end)
+			else
+				setStatus("Invalid key. Please try again.", C.red)
+				tween:Create(verifyBtn, TweenInfo.new(0.15), { BackgroundColor3 = C.purple }):Play()
+			end
+		end)
+	end)
+
+	buyBtn.MouseButton1Click:Connect(function()
+		setStatus("Contact the script author for premium access.", C.yellow)
+	end)
 end
 
 -- ─── loading screen ───────────────────────────────────────────────────────────
-local function showLoadingScreen(screen,cfg)
-	local loadTitle=cfg.LoadingTitle or cfg.Name or "Velora UI"
-	local loadSubtitle=cfg.LoadingSubtitle or "by Naru"
-	local logoId="rbxassetid://"..(tostring(cfg.Logo or "90288986008784"))
-	local overlay=newInst("Frame",{
-		Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.fromRGB(6,6,14),
-		BorderSizePixel=0,ZIndex=200,Parent=screen,
+
+local function showLoadingScreen(screen, cfg)
+	local loadTitle    = cfg.LoadingTitle    or cfg.Name or "Velora UI"
+	local loadSubtitle = cfg.LoadingSubtitle or "by Naru"
+	local logoId       = "rbxassetid://" .. (tostring(cfg.Logo or "90288986008784"))
+
+	local overlay = newInst("Frame", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(6, 6, 14),
+		BorderSizePixel = 0, ZIndex = 200, Parent = screen,
 	})
-	local inner=newInst("Frame",{
-		Size=UDim2.new(0,320,0,160),Position=UDim2.new(0.5,-160,0.6,-80),
-		BackgroundColor3=Color3.fromRGB(12,10,24),BackgroundTransparency=1,
-		BorderSizePixel=0,ZIndex=201,Parent=overlay,
-	});corner(18,inner);stroke(C.border,1.2,inner)
-	local logoFrame=newInst("Frame",{
-		Size=UDim2.new(0,64,0,64),Position=UDim2.new(0,28,0.5,-32),
-		BackgroundColor3=Color3.fromRGB(20,14,38),BorderSizePixel=0,ZIndex=202,Parent=inner,
-	});corner(14,logoFrame);stroke(C.border,1,logoFrame)
-	newInst("ImageLabel",{
-		Size=UDim2.new(0,48,0,48),Position=UDim2.new(0.5,-24,0.5,-24),
-		BackgroundTransparency=1,Image=logoId,ZIndex=203,Parent=logoFrame,
+
+	local inner = newInst("Frame", {
+		Size = UDim2.new(0, 320, 0, 160),
+		Position = UDim2.new(0.5, -160, 0.6, -80),
+		BackgroundColor3 = Color3.fromRGB(12, 10, 24),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0, ZIndex = 201, Parent = overlay,
+	}); corner(18, inner); stroke(C.border, 1.2, inner)
+
+	local logoFrame = newInst("Frame", {
+		Size = UDim2.new(0, 64, 0, 64), Position = UDim2.new(0, 28, 0.5, -32),
+		BackgroundColor3 = Color3.fromRGB(20, 14, 38),
+		BorderSizePixel = 0, ZIndex = 202, Parent = inner,
+	}); corner(14, logoFrame); stroke(C.border, 1, logoFrame)
+
+	newInst("ImageLabel", {
+		Size = UDim2.new(0, 48, 0, 48), Position = UDim2.new(0.5, -24, 0.5, -24),
+		BackgroundTransparency = 1, Image = logoId,
+		ZIndex = 203, Parent = logoFrame,
 	})
-	local tx=108
-	newInst("TextLabel",{
-		Size=UDim2.new(1,-(tx+18),0,28),Position=UDim2.new(0,tx,0,32),
-		BackgroundTransparency=1,Text=loadTitle,TextColor3=C.purple,
-		Font=Enum.Font.GothamBold,TextSize=20,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=202,Parent=inner,
+
+	local tx = 108
+	newInst("TextLabel", {
+		Size = UDim2.new(1, -(tx + 18), 0, 28), Position = UDim2.new(0, tx, 0, 32),
+		BackgroundTransparency = 1, Text = loadTitle,
+		TextColor3 = C.purple, Font = Enum.Font.GothamBold,
+		TextSize = 20, TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 202, Parent = inner,
 	})
-	newInst("TextLabel",{
-		Size=UDim2.new(1,-(tx+18),0,18),Position=UDim2.new(0,tx,0,62),
-		BackgroundTransparency=1,Text=loadSubtitle,TextColor3=C.textDim,
-		Font=Enum.Font.Gotham,TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=202,Parent=inner,
+	newInst("TextLabel", {
+		Size = UDim2.new(1, -(tx + 18), 0, 18), Position = UDim2.new(0, tx, 0, 62),
+		BackgroundTransparency = 1, Text = loadSubtitle,
+		TextColor3 = C.textDim, Font = Enum.Font.Gotham,
+		TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 202, Parent = inner,
 	})
-	local barTrack=newInst("Frame",{
-		Size=UDim2.new(1,-56,0,4),Position=UDim2.new(0,28,1,-24),
-		BackgroundColor3=Color3.fromRGB(26,20,46),BorderSizePixel=0,ZIndex=202,Parent=inner,
-	});corner(99,barTrack)
-	local barFill=newInst("Frame",{
-		Size=UDim2.new(0,0,1,0),BackgroundColor3=C.purple,BorderSizePixel=0,ZIndex=203,Parent=barTrack,
-	});corner(99,barFill)
-	local loadLbl=newInst("TextLabel",{
-		Size=UDim2.new(1,-56,0,14),Position=UDim2.new(0,28,1,-44),
-		BackgroundTransparency=1,Text="Loading...",TextColor3=C.textDim,
-		Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=202,Parent=inner,
+
+	local barTrack = newInst("Frame", {
+		Size = UDim2.new(1, -56, 0, 4), Position = UDim2.new(0, 28, 1, -24),
+		BackgroundColor3 = Color3.fromRGB(26, 20, 46),
+		BorderSizePixel = 0, ZIndex = 202, Parent = inner,
+	}); corner(99, barTrack)
+
+	local barFill = newInst("Frame", {
+		Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = C.purple,
+		BorderSizePixel = 0, ZIndex = 203, Parent = barTrack,
+	}); corner(99, barFill)
+
+	local loadLbl = newInst("TextLabel", {
+		Size = UDim2.new(1, -56, 0, 14), Position = UDim2.new(0, 28, 1, -44),
+		BackgroundTransparency = 1, Text = "Loading...",
+		TextColor3 = C.textDim, Font = Enum.Font.Gotham,
+		TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 202, Parent = inner,
 	})
-	tween:Create(inner,TweenInfo.new(0.5,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-		BackgroundTransparency=0,Position=UDim2.new(0.5,-160,0.5,-80),
+
+	tween:Create(inner, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 0,
+		Position = UDim2.new(0.5, -160, 0.5, -80),
 	}):Play()
+
 	task.spawn(function()
-		local steps={"Initializing...","Loading UI...","Applying theme...","Ready!"}
-		for i,msg in ipairs(steps) do
-			loadLbl.Text=msg
-			tween:Create(barFill,TweenInfo.new(0.4,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(i/#steps,0,1,0)}):Play()
+		local steps = { "Initializing...", "Loading UI...", "Applying theme...", "Ready!" }
+		for i, msg in ipairs(steps) do
+			loadLbl.Text = msg
+			tween:Create(barFill, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = UDim2.new(i / #steps, 0, 1, 0)
+			}):Play()
 			task.wait(0.38)
 		end
 	end)
-	task.delay(1.85,function()
-		tween:Create(overlay,TweenInfo.new(0.5,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{BackgroundTransparency=1}):Play()
-		tween:Create(inner,TweenInfo.new(0.4,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
-			BackgroundTransparency=1,Position=UDim2.new(0.5,-160,0.4,-80),
-		}):Play()
-		task.delay(0.55,function() if overlay.Parent then overlay:Destroy() end end)
-	end)
-end
 
--- ─── button flash ─────────────────────────────────────────────────────────────
-local function flashButton(btn,success)
-	local s=btn:FindFirstChildWhichIsA("UIStroke")
-	local origCol=s and s.Color or C.border
-	if s then tween:Create(s,TweenInfo.new(0.1),{Color=success and C.green or C.red,Thickness=2}):Play() end
-	tween:Create(btn,TweenInfo.new(0.15),{BackgroundColor3=success and Color3.fromRGB(30,80,30) or Color3.fromRGB(85,0,0)}):Play()
-	task.delay(0.5,function()
-		if not btn.Parent then return end
-		tween:Create(btn,TweenInfo.new(0.4,Enum.EasingStyle.Quad),{BackgroundColor3=Color3.fromRGB(26,14,46)}):Play()
-		if s then tween:Create(s,TweenInfo.new(0.4),{Color=origCol,Thickness=1}):Play() end
+	task.delay(1.85, function()
+		tween:Create(overlay, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1
+		}):Play()
+		tween:Create(inner, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0.5, -160, 0.4, -80),
+		}):Play()
+		task.delay(0.55, function() if overlay.Parent then overlay:Destroy() end end)
 	end)
 end
 
 -- ─── CreateWindow ─────────────────────────────────────────────────────────────
-function VeloraUI:CreateWindow(cfg)
-	cfg=cfg or {}
-	local me=Players.LocalPlayer
-	local title=cfg.Name or "Velora UI"
-	autoSave=cfg.AutoSave==true
 
-	local toggleKey
-	if type(cfg.ToggleUIKeybind)=="string" then
-		local ok,kc=pcall(function() return Enum.KeyCode[cfg.ToggleUIKeybind:upper()] end)
-		toggleKey=ok and kc or Enum.KeyCode.RightBracket
-	elseif typeof(cfg.ToggleUIKeybind)=="EnumItem" then
-		toggleKey=cfg.ToggleUIKeybind
-	else
-		toggleKey=cfg.ToggleKey or Enum.KeyCode.RightBracket
+function VeloraUI:CreateWindow(cfg)
+	cfg = cfg or {}
+	local me        = game.Players.LocalPlayer
+	local title     = cfg.Name or "Velora UI"
+	local toggleKey = cfg.ToggleKey or Enum.KeyCode.RightBracket
+	local useKey    = cfg.KeySystem == true
+	local keyCfg    = cfg.KeySettings or {}
+
+	if me.PlayerGui:FindFirstChild("VeloraUI") then
+		me.PlayerGui.VeloraUI:Destroy()
 	end
 
-	local configSaving=cfg.ConfigurationSaving or {}
-	local configEnabled=configSaving.Enabled==true
-	local configFolder=configSaving.FolderName or CONFIG_FOLDER
-	local configFileName=configSaving.FileName or tostring(game.PlaceId)
-	CONFIG_FILE=configFolder.."/"..configFileName..".json"
-	if configEnabled then ensureFolder(configFolder) end
-
-	if me.PlayerGui:FindFirstChild("VeloraUI") then me.PlayerGui.VeloraUI:Destroy() end
-
-	local screen=newInst("ScreenGui",{
-		Name="VeloraUI",ResetOnSpawn=false,
-		ZIndexBehavior=Enum.ZIndexBehavior.Sibling,Parent=me.PlayerGui,
+	local screen = newInst("ScreenGui", {
+		Name = "VeloraUI", ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = me.PlayerGui,
 	})
-	notifScreen=screen;screenRef=screen
 
 	screen.AncestryChanged:Connect(function()
-		if not screen.Parent then _G.__VeloraUI_Running=nil;notifScreen=nil end
+		if not screen.Parent then
+			_G.__VeloraUI_Running = nil
+		end
 	end)
 
-	-- glow
-	local glowFrame=newInst("Frame",{
-		Size=UDim2.new(0,458,0,510),Position=UDim2.new(0.5,-229,0.5,-255),
-		BackgroundColor3=Color3.fromRGB(100,50,220),BackgroundTransparency=0.88,
-		BorderSizePixel=0,ZIndex=0,Visible=false,Parent=screen,
-	});corner(20,glowFrame)
+	local notify = buildNotifSystem(screen)
 
-	-- window
-	local win=newInst("Frame",{
-		Size=UDim2.new(0,370,0,420),Position=UDim2.new(0.5,-220,0.5,-245),
-		BackgroundColor3=C.bg,BorderSizePixel=0,ZIndex=1,
-		ClipsDescendants=false,BackgroundTransparency=1,Visible=false,Parent=screen,
-	});corner(16,win);stroke(Color3.fromRGB(100,50,220),1.5,win)
+	-- ── glow + window (built immediately, hidden until key passes) ────────────
+	local glowFrame = newInst("Frame", {
+		Size = UDim2.new(0, 458, 0, 510), Position = UDim2.new(0.5, -229, 0.5, -255),
+		BackgroundColor3 = Color3.fromRGB(100, 50, 220), BackgroundTransparency = 0.88,
+		BorderSizePixel = 0, ZIndex = 0, Visible = false, Parent = screen,
+	}); corner(20, glowFrame)
+
+	local win = newInst("Frame", {
+		Size = UDim2.new(0, 370, 0, 420), Position = UDim2.new(0.5, -220, 0.5, -245),
+		BackgroundColor3 = C.bg, BorderSizePixel = 0, ZIndex = 1,
+		ClipsDescendants = false, BackgroundTransparency = 1,
+		Visible = false, Parent = screen,
+	}); corner(16, win); stroke(Color3.fromRGB(100, 50, 220), 1.5, win)
 
 	-- topbar
-	local topbar=newInst("Frame",{
-		Size=UDim2.new(1,0,0,44),BackgroundColor3=C.bgDeep,
-		BorderSizePixel=0,ZIndex=2,Parent=win,
-	});corner(16,topbar)
-	newInst("Frame",{
-		Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,0,1,-16),
-		BackgroundColor3=C.bgDeep,BorderSizePixel=0,ZIndex=2,Parent=topbar,
+	local topbar = newInst("Frame", {
+		Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = C.bgDeep,
+		BorderSizePixel = 0, ZIndex = 2, Parent = win,
+	}); corner(16, topbar)
+	newInst("Frame", {
+		Size = UDim2.new(1, 0, 0, 16), Position = UDim2.new(0, 0, 1, -16),
+		BackgroundColor3 = C.bgDeep, BorderSizePixel = 0, ZIndex = 2, Parent = topbar,
 	})
 
-	-- dots
-	local dotRed=newInst("TextButton",{
-		Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,14,0.5,-6),
-		BackgroundColor3=Color3.fromRGB(255,95,87),BorderSizePixel=0,Text="",ZIndex=4,Parent=topbar,
-	});corner(99,dotRed)
-	local dotYellow=newInst("TextButton",{
-		Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,32,0.5,-6),
-		BackgroundColor3=Color3.fromRGB(255,189,46),BorderSizePixel=0,Text="",ZIndex=4,Parent=topbar,
-	});corner(99,dotYellow)
-	local dotGreen=newInst("Frame",{
-		Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,50,0.5,-6),
-		BackgroundColor3=Color3.fromRGB(40,202,65),BorderSizePixel=0,ZIndex=4,Parent=topbar,
-	});corner(99,dotGreen)
+	local dotRed = newInst("TextButton", {
+		Size = UDim2.new(0, 12, 0, 12), Position = UDim2.new(0, 14, 0.5, -6),
+		BackgroundColor3 = Color3.fromRGB(255, 95, 87), BorderSizePixel = 0,
+		Text = "", ZIndex = 4, Parent = topbar,
+	}); corner(99, dotRed)
 
-	-- title (centered, leaves room for profile btn on right)
-	newInst("TextLabel",{
-		Size=UDim2.new(1,-120,1,0),Position=UDim2.new(0,70,0,0),
-		BackgroundTransparency=1,Text=title,TextColor3=C.purple,
-		TextScaled=true,Font=Enum.Font.GothamBold,
-		TextXAlignment=Enum.TextXAlignment.Center,ZIndex=3,Parent=topbar,
+	local dotYellow = newInst("TextButton", {
+		Size = UDim2.new(0, 12, 0, 12), Position = UDim2.new(0, 32, 0.5, -6),
+		BackgroundColor3 = Color3.fromRGB(255, 189, 46), BorderSizePixel = 0,
+		Text = "", ZIndex = 4, Parent = topbar,
+	}); corner(99, dotYellow)
+
+	local dotGreen = newInst("Frame", {
+		Size = UDim2.new(0, 12, 0, 12), Position = UDim2.new(0, 50, 0.5, -6),
+		BackgroundColor3 = Color3.fromRGB(40, 202, 65), BorderSizePixel = 0,
+		ZIndex = 4, Parent = topbar,
+	}); corner(99, dotGreen)
+
+	newInst("TextLabel", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+		Text = title, TextColor3 = C.purple, TextScaled = true,
+		Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 3, Parent = topbar,
 	})
 
-	-- profile button
-	local profBtn=newInst("TextButton",{
-		Size=UDim2.new(0,30,0,30),Position=UDim2.new(1,-40,0.5,-15),
-		BackgroundColor3=Color3.fromRGB(20,14,38),BorderSizePixel=0,
-		Text="",ZIndex=5,Parent=topbar,
-	});corner(99,profBtn);stroke(C.border,1,profBtn)
-	local profAvatar=newInst("ImageLabel",{
-		Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Image="",ZIndex=6,Parent=profBtn,
-	});corner(99,profAvatar)
-	task.spawn(function()
-		local ok,url=pcall(function()
-			return Players:GetUserThumbnailAsync(me.UserId,Enum.ThumbnailType.AvatarBust,Enum.ThumbnailSize.Size100x100)
-		end)
-		if ok and url then profAvatar.Image=url end
-	end)
-
-	local profileCtrl=buildProfilePanel(screen,win)
-	profBtn.MouseButton1Click:Connect(function()
-		if profileCtrl.isOpen() then profileCtrl.close() else profileCtrl.open() end
-	end)
-
-	-- drag
-	local dragging,dragStart,startPos=false,nil,nil
+	-- drag (global listeners so fast movement doesn't lose tracking)
+	local dragging, dragStart, startPos = false, nil, nil
 	topbar.InputBegan:Connect(function(i)
-		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-			dragging=true;dragStart=i.Position;startPos=win.Position
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragging = true; dragStart = i.Position; startPos = win.Position
 		end
 	end)
 	input.InputChanged:Connect(function(i)
-		if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-			local d=i.Position-dragStart
-			win.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
-			glowFrame.Position=UDim2.new(win.Position.X.Scale,win.Position.X.Offset-9,win.Position.Y.Scale,win.Position.Y.Offset-9)
+		if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			local d = i.Position - dragStart
+			win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+			glowFrame.Position = UDim2.new(win.Position.X.Scale, win.Position.X.Offset - 9, win.Position.Y.Scale, win.Position.Y.Offset - 9)
 		end
 	end)
 	input.InputEnded:Connect(function(i)
-		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
 	end)
 
 	-- tab bar
-	local tabBar=newInst("Frame",{
-		Size=UDim2.new(1,0,0,38),Position=UDim2.new(0,0,0,44),
-		BackgroundColor3=C.bgDeep,BorderSizePixel=0,ZIndex=2,Parent=win,
-	});stroke(Color3.fromRGB(100,50,220),1,tabBar)
-	listLayout(tabBar,0,Enum.FillDirection.Horizontal)
-
-	-- ── search bar (like Rayfield) ─────────────────────────────────────────────
-	local searchOpen=false
-
-	local searchBar=newInst("Frame",{
-		Size=UDim2.new(1,-20,0,32),Position=UDim2.new(0.5,0,0,50),
-		AnchorPoint=Vector2.new(0.5,0),
-		BackgroundColor3=Color3.fromRGB(14,10,28),BackgroundTransparency=1,
-		BorderSizePixel=0,ZIndex=10,Visible=false,Parent=win,
-	});corner(10,searchBar)
-	local searchStroke=stroke(C.border,1,searchBar)
-	searchStroke.Transparency=1
-
-	local searchIcon=newInst("TextLabel",{
-		Size=UDim2.new(0,24,1,0),Position=UDim2.new(0,6,0,0),
-		BackgroundTransparency=1,Text="🔍",TextScaled=true,
-		Font=Enum.Font.Gotham,TextColor3=C.textDim,ZIndex=11,Parent=searchBar,
-	})
-
-	local searchBox=newInst("TextBox",{
-		Size=UDim2.new(1,-36,1,-8),Position=UDim2.new(0,32,0,4),
-		BackgroundTransparency=1,Text="",
-		PlaceholderText="Search elements...",
-		PlaceholderColor3=C.textDim,TextColor3=C.textMain,
-		Font=Enum.Font.Gotham,TextSize=12,
-		TextXAlignment=Enum.TextXAlignment.Left,
-		ClearTextOnFocus=false,ZIndex=11,Parent=searchBar,
-	})
-
-	-- search toggle button in topbar area (small icon right of title)
-	local searchToggleBtn=newInst("TextButton",{
-		Size=UDim2.new(0,28,0,28),Position=UDim2.new(1,-76,0.5,-14),
-		BackgroundColor3=Color3.fromRGB(20,14,38),BorderSizePixel=0,
-		Text="🔍",TextScaled=true,Font=Enum.Font.Gotham,
-		TextColor3=C.textDim,ZIndex=5,Parent=topbar,
-	});corner(8,searchToggleBtn)
+	local tabBar = newInst("Frame", {
+		Size = UDim2.new(1, 0, 0, 38), Position = UDim2.new(0, 0, 0, 44),
+		BackgroundColor3 = C.bgDeep, BorderSizePixel = 0, ZIndex = 2, Parent = win,
+	}); stroke(Color3.fromRGB(100, 50, 220), 1, tabBar)
+	listLayout(tabBar, 0, Enum.FillDirection.Horizontal)
 
 	-- body
-	local bodyFrame=newInst("ScrollingFrame",{
-		Size=UDim2.new(1,0,1,-82),Position=UDim2.new(0,0,0,82),
-		BackgroundTransparency=1,BorderSizePixel=0,
-		ScrollBarThickness=2,ScrollBarImageColor3=C.border,
-		CanvasSize=UDim2.new(0,0,0,0),ZIndex=2,
-		ClipsDescendants=true,Parent=win,
-	});padding(8,8,8,8,bodyFrame)
+	local bodyFrame = newInst("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 1, -104), Position = UDim2.new(0, 0, 0, 82),
+		BackgroundTransparency = 1, BorderSizePixel = 0,
+		ScrollBarThickness = 2, ScrollBarImageColor3 = C.border,
+		CanvasSize = UDim2.new(0, 0, 0, 0), ZIndex = 2,
+		ClipsDescendants = true, Parent = win,
+	}); padding(8, 8, 8, 8, bodyFrame)
 
-	local bodyLayout=listLayout(bodyFrame,6)
+	local bodyLayout = listLayout(bodyFrame, 6)
 	bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-		bodyFrame.CanvasSize=UDim2.new(0,0,0,bodyLayout.AbsoluteContentSize.Y+16)
-	end)
-
-	-- track all searchable elements: {frame, name}
-	local allElements={}
-
-	local function runSearch(query)
-		query=query:lower():gsub("^%s*(.-)%s*$","%1")
-		for _,entry in ipairs(allElements) do
-			if entry.frame and entry.frame.Parent then
-				if query=="" then
-					entry.frame.Visible=true
-				else
-					entry.frame.Visible=entry.name:lower():find(query,1,true)~=nil
-				end
-			end
-		end
-	end
-
-	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-		runSearch(searchBox.Text)
-	end)
-
-	local function openSearch()
-		searchOpen=true
-		searchBar.Visible=true
-		searchBar.BackgroundTransparency=1
-		searchStroke.Transparency=1
-		-- shift body down to make room
-		bodyFrame.Position=UDim2.new(0,0,0,122)
-		bodyFrame.Size=UDim2.new(1,0,1,-122)
-		tween:Create(searchBar,TweenInfo.new(0.3,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{BackgroundTransparency=0}):Play()
-		tween:Create(searchStroke,TweenInfo.new(0.3),{Transparency=0}):Play()
-		task.delay(0.1,function() searchBox:CaptureFocus() end)
-	end
-
-	local function closeSearch()
-		searchOpen=false
-		searchBox.Text=""
-		runSearch("")
-		tween:Create(searchBar,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{BackgroundTransparency=1}):Play()
-		tween:Create(searchStroke,TweenInfo.new(0.2),{Transparency=1}):Play()
-		task.delay(0.22,function() searchBar.Visible=false end)
-		bodyFrame.Position=UDim2.new(0,0,0,82)
-		bodyFrame.Size=UDim2.new(1,0,1,-82)
-	end
-
-	searchToggleBtn.MouseButton1Click:Connect(function()
-		if searchOpen then closeSearch() else openSearch() end
-	end)
-
-	searchBox.FocusLost:Connect(function()
-		if searchBox.Text=="" and searchOpen then
-			task.wait(0.15)
-			closeSearch()
-		end
+		bodyFrame.CanvasSize = UDim2.new(0, 0, 0, bodyLayout.AbsoluteContentSize.Y + 16)
 	end)
 
 	-- minimize
-	local minimized=false
+	local minimized = false
 	dotYellow.MouseButton1Click:Connect(function()
-		minimized=not minimized
+		minimized = not minimized
 		if minimized then
-			if searchOpen then closeSearch() end
-			bodyFrame.Visible=false;tabBar.Visible=false;searchBar.Visible=false
-			tween:Create(win,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,440,0,44)}):Play()
-			tween:Create(glowFrame,TweenInfo.new(0.3),{Size=UDim2.new(0,458,0,60)}):Play()
+			bodyFrame.Visible = false; tabBar.Visible = false
+			tween:Create(win, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(0, 440, 0, 44) }):Play()
+			tween:Create(glowFrame, TweenInfo.new(0.3), { Size = UDim2.new(0, 458, 0, 60) }):Play()
 		else
-			bodyFrame.Visible=true;tabBar.Visible=true
-			tween:Create(win,TweenInfo.new(0.35,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,440,0,490)}):Play()
-			tween:Create(glowFrame,TweenInfo.new(0.35,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(0,458,0,510)}):Play()
+			bodyFrame.Visible = true; tabBar.Visible = true
+			tween:Create(win, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(0, 440, 0, 490) }):Play()
+			tween:Create(glowFrame, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(0, 458, 0, 510) }):Play()
 		end
 	end)
 
-	-- close
+	-- close with confirm dialog
 	dotRed.MouseButton1Click:Connect(function()
-		buildConfirmDialog(screen,function()
-			tween:Create(win,TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{
-				Size=UDim2.new(0,300,0,0),BackgroundTransparency=1,
-			}):Play()
-			tween:Create(glowFrame,TweenInfo.new(0.25),{BackgroundTransparency=1}):Play()
-			task.delay(0.3,function() _G.__VeloraUI_Running=nil;screen:Destroy() end)
-		end)
+		buildConfirmDialog(screen,
+			function()
+				tween:Create(win, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+					{ Size = UDim2.new(0, 300, 0, 0), BackgroundTransparency = 1 }):Play()
+				tween:Create(glowFrame, TweenInfo.new(0.25), { BackgroundTransparency = 1 }):Play()
+				task.delay(0.3, function()
+					_G.__VeloraUI_Running = nil
+					screen:Destroy()
+				end)
+			end,
+			nil
+		)
 	end)
 
-	-- reveal
-	local isMobile=input.TouchEnabled and not input.KeyboardEnabled
+	-- keyboard toggle
+	local isMobile = input.TouchEnabled and not input.KeyboardEnabled
+
+	-- ── Function that actually reveals the window ─────────────────────────────
 	local function revealWindow()
-		win.Visible=true;glowFrame.Visible=true
-		showLoadingScreen(screen,cfg)
+		win.Visible = true
+		glowFrame.Visible = true
+		showLoadingScreen(screen, cfg)
+
 		task.defer(function()
-			tween:Create(win,TweenInfo.new(0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-				Size=UDim2.new(0,440,0,490),BackgroundTransparency=0,
-				Position=UDim2.new(0.5,-220,0.5,-245),
+			tween:Create(win, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Size = UDim2.new(0, 440, 0, 490), BackgroundTransparency = 0,
+				Position = UDim2.new(0.5, -220, 0.5, -245),
 			}):Play()
 		end)
+
 		if not isMobile then
-			task.delay(2.4,function()
-				notify("Velora UI","Press "..tostring(toggleKey.Name).." to toggle",C.purple)
+			task.delay(2.4, function()
+				notify("Velora UI", "Press " .. tostring(toggleKey.Name) .. " to toggle", C.purple)
 			end)
-			input.InputBegan:Connect(function(i,gp)
+			input.InputBegan:Connect(function(i, gp)
 				if gp then return end
-				if i.KeyCode==toggleKey then win.Visible=not win.Visible;glowFrame.Visible=win.Visible end
+				if i.KeyCode == toggleKey then
+					win.Visible = not win.Visible; glowFrame.Visible = win.Visible
+				end
 			end)
 		end
 	end
-	revealWindow()
 
-	local tabCount=0;local activeTab=nil
-	local winObj={}
+	-- ── Key system gate ───────────────────────────────────────────────────────
+	if useKey then
+		showKeySystem(screen, keyCfg, revealWindow)
+	else
+		revealWindow()
+	end
 
-	-- ── CreateTab ─────────────────────────────────────────────────────────────
-	function winObj:CreateTab(tabName,iconId)
-		tabCount=tabCount+1
+	local tabCount = 0; local activeTab = nil
+	local winObj = {}
 
-		local tabBtn=newInst("TextButton",{
-			Size=UDim2.new(0,iconId and 110 or 100,1,0),
-			BackgroundColor3=C.bgDeep,BorderSizePixel=0,Text="",ZIndex=3,Parent=tabBar,
+	-- ─── CreateTab ────────────────────────────────────────────────────────────
+
+	function winObj:CreateTab(tabName)
+		tabCount = tabCount + 1
+
+		local tabBtn = newInst("TextButton", {
+			Size = UDim2.new(0, 100, 1, 0), BackgroundColor3 = C.bgDeep,
+			BorderSizePixel = 0, Text = tabName, TextColor3 = C.textDim,
+			Font = Enum.Font.GothamBold, TextSize = 11, ZIndex = 3, Parent = tabBar,
 		})
-		if iconId and iconId~=0 then
-			newInst("ImageLabel",{
-				Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,10,0.5,-7),
-				BackgroundTransparency=1,
-				Image=type(iconId)=="number" and ("rbxassetid://"..iconId) or tostring(iconId),
-				ImageColor3=C.textDim,ZIndex=4,Parent=tabBtn,
-			})
-			newInst("TextLabel",{
-				Size=UDim2.new(1,-30,1,0),Position=UDim2.new(0,28,0,0),
-				BackgroundTransparency=1,Text=tabName,TextColor3=C.textDim,
-				Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=tabBtn,
-			})
-		else
-			newInst("TextLabel",{
-				Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text=tabName,
-				TextColor3=C.textDim,Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=tabBtn,
-			})
-		end
-
-		local underline=newInst("Frame",{
-			Size=UDim2.new(1,0,0,2),Position=UDim2.new(0,0,1,-2),
-			BackgroundColor3=C.border,BorderSizePixel=0,BackgroundTransparency=1,ZIndex=4,Parent=tabBtn,
+		local underline = newInst("Frame", {
+			Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, -2),
+			BackgroundColor3 = C.border, BorderSizePixel = 0,
+			BackgroundTransparency = 1, ZIndex = 4, Parent = tabBtn,
 		})
 
-		local tabContainer=newInst("Frame",{
-			Size=UDim2.new(1,0,0,10),BackgroundTransparency=1,BorderSizePixel=0,
-			Visible=false,ZIndex=2,AutomaticSize=Enum.AutomaticSize.Y,
-			ClipsDescendants=false,Parent=bodyFrame,
-		});listLayout(tabContainer,6)
+		local tabContainer = newInst("Frame", {
+			Size = UDim2.new(1, 0, 0, 10),
+			BackgroundTransparency = 1, BorderSizePixel = 0,
+			Visible = false, ZIndex = 2,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			ClipsDescendants = false, Parent = bodyFrame,
+		})
+		listLayout(tabContainer, 6)
 
-		local entry={container=tabContainer,btn=tabBtn,line=underline}
-
+		local entry = { container = tabContainer, btn = tabBtn, line = underline }
 		local function activate()
 			if activeTab then
-				activeTab.container.Visible=false
-				for _,c in pairs(activeTab.btn:GetChildren()) do
-					if c:IsA("TextLabel") then tween:Create(c,TweenInfo.new(0.15),{TextColor3=C.textDim}):Play()
-					elseif c:IsA("ImageLabel") then tween:Create(c,TweenInfo.new(0.15),{ImageColor3=C.textDim}):Play() end
-				end
-				tween:Create(activeTab.line,TweenInfo.new(0.15),{BackgroundTransparency=1}):Play()
+				activeTab.container.Visible = false
+				tween:Create(activeTab.btn, TweenInfo.new(0.15), { TextColor3 = C.textDim }):Play()
+				tween:Create(activeTab.line, TweenInfo.new(0.15), { BackgroundTransparency = 1 }):Play()
 			end
-			activeTab=entry;tabContainer.Visible=true
-			for _,c in pairs(tabBtn:GetChildren()) do
-				if c:IsA("TextLabel") then tween:Create(c,TweenInfo.new(0.15),{TextColor3=C.textMain}):Play()
-				elseif c:IsA("ImageLabel") then tween:Create(c,TweenInfo.new(0.15),{ImageColor3=C.purple}):Play() end
-			end
-			tween:Create(underline,TweenInfo.new(0.15),{BackgroundTransparency=0}):Play()
-			-- reset search when switching tabs
-			if searchOpen then closeSearch() end
+			activeTab = entry; tabContainer.Visible = true
+			tween:Create(tabBtn, TweenInfo.new(0.15), { TextColor3 = C.textMain }):Play()
+			tween:Create(underline, TweenInfo.new(0.15), { BackgroundTransparency = 0 }):Play()
 		end
-
-		if tabCount==1 then activate() end
+		if tabCount == 1 then activate() end
 		tabBtn.MouseButton1Click:Connect(activate)
 
-		local tabObj={}
+		local tabObj = {}
 
-		local function makeRow(h,autoY)
-			local r=newInst("Frame",{
-				Size=autoY and UDim2.new(1,0,0,10) or UDim2.new(1,0,0,h or 48),
-				BackgroundColor3=C.bgRow,BorderSizePixel=0,ZIndex=3,
-				ClipsDescendants=false,
-				AutomaticSize=autoY and Enum.AutomaticSize.Y or Enum.AutomaticSize.None,
-				Parent=tabContainer,
-			});corner(10,r);stroke(Color3.fromRGB(100,50,220),1,r);return r
+		local function makeRow(h, autoY)
+			local r = newInst("Frame", {
+				Size = autoY and UDim2.new(1, 0, 0, 10) or UDim2.new(1, 0, 0, h or 48),
+				BackgroundColor3 = C.bgRow, BorderSizePixel = 0, ZIndex = 3,
+				ClipsDescendants = false,
+				AutomaticSize = autoY and Enum.AutomaticSize.Y or Enum.AutomaticSize.None,
+				Parent = tabContainer,
+			}); corner(10, r); stroke(Color3.fromRGB(100, 50, 220), 1, r); return r
 		end
 
-		local function rowLabel(txt,sub,parent)
-			local wrap=newInst("Frame",{
-				Size=UDim2.new(0.6,0,0,sub and 38 or 22),
-				Position=UDim2.new(0,12,0.5,sub and -19 or -11),
-				BackgroundTransparency=1,ZIndex=4,Parent=parent,
+		local function rowLabel(txt, sub, parent)
+			local wrap = newInst("Frame", {
+				Size = UDim2.new(0.6, 0, 0, sub and 38 or 22),
+				Position = UDim2.new(0, 12, 0.5, sub and -19 or -11),
+				BackgroundTransparency = 1, ZIndex = 4, Parent = parent,
 			})
-			newInst("TextLabel",{
-				Size=UDim2.new(1,0,0,16),BackgroundTransparency=1,
-				Text=txt,TextColor3=C.textMain,TextXAlignment=Enum.TextXAlignment.Left,
-				Font=Enum.Font.GothamBold,TextSize=12,ZIndex=4,Parent=wrap,
+			newInst("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
+				Text = txt, TextColor3 = C.textMain,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Enum.Font.GothamBold, TextSize = 12, ZIndex = 4, Parent = wrap,
 			})
 			if sub then
-				newInst("TextLabel",{
-					Size=UDim2.new(1,0,0,14),Position=UDim2.new(0,0,0,19),
-					BackgroundTransparency=1,Text=sub,TextColor3=C.textDim,
-					TextXAlignment=Enum.TextXAlignment.Left,
-					Font=Enum.Font.Gotham,TextSize=10,ZIndex=4,Parent=wrap,
+				newInst("TextLabel", {
+					Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0, 0, 0, 19),
+					BackgroundTransparency = 1, Text = sub, TextColor3 = C.textDim,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Font = Enum.Font.Gotham, TextSize = 10, ZIndex = 4, Parent = wrap,
 				})
 			end
 		end
 
-		-- Toggle
+		-- ── Toggle ────────────────────────────────────────────────────────────
+
 		function tabObj:CreateToggle(cfg2)
-			cfg2=cfg2 or {}
-			local val=cfg2.CurrentValue or false
-			local sendNotif=cfg2.SendNotification~=false
-			if cfg2.Flag then flags[cfg2.Flag]=val end
-			local row=makeRow(48);rowLabel(cfg2.Name or "Toggle",cfg2.Description,row)
-			table.insert(allElements,{frame=row,name=cfg2.Name or "Toggle"})
-			local track=newInst("Frame",{
-				Size=UDim2.new(0,42,0,24),Position=UDim2.new(1,-54,0.5,-12),
-				BackgroundColor3=Color3.fromRGB(26,26,46),BorderSizePixel=0,ZIndex=4,Parent=row,
-			});corner(99,track);stroke(Color3.fromRGB(100,50,220),1,track)
-			local thumb=newInst("Frame",{
-				Size=UDim2.new(0,18,0,18),Position=UDim2.new(0,2,0.5,-9),
-				BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=5,Parent=track,
-			});corner(99,thumb)
+			cfg2 = cfg2 or {}
+			local val = cfg2.CurrentValue or false
+			local sendNotif = cfg2.SendNotification ~= false
+			if cfg2.Flag then flags[cfg2.Flag] = val end
+
+			local row = makeRow(48); rowLabel(cfg2.Name or "Toggle", cfg2.Description, row)
+
+			local track = newInst("Frame", {
+				Size = UDim2.new(0, 42, 0, 24), Position = UDim2.new(1, -54, 0.5, -12),
+				BackgroundColor3 = Color3.fromRGB(26, 26, 46), BorderSizePixel = 0, ZIndex = 4, Parent = row,
+			}); corner(99, track); stroke(Color3.fromRGB(100, 50, 220), 1, track)
+			local thumb = newInst("Frame", {
+				Size = UDim2.new(0, 18, 0, 18), Position = UDim2.new(0, 2, 0.5, -9),
+				BackgroundColor3 = C.purpleFade, BorderSizePixel = 0, ZIndex = 5, Parent = track,
+			}); corner(99, thumb)
+
 			local function setVal(v)
-				val=v;if cfg2.Flag then flags[cfg2.Flag]=v end
+				val = v
+				if cfg2.Flag then flags[cfg2.Flag] = v end
 				if v then
-					tween:Create(thumb,TweenInfo.new(0.18),{Position=UDim2.new(0,22,0.5,-9),BackgroundColor3=C.purple}):Play()
-					tween:Create(track,TweenInfo.new(0.18),{BackgroundColor3=Color3.fromRGB(42,26,78)}):Play()
+					tween:Create(thumb, TweenInfo.new(0.18), { Position = UDim2.new(0, 22, 0.5, -9), BackgroundColor3 = C.purple }):Play()
+					tween:Create(track, TweenInfo.new(0.18), { BackgroundColor3 = Color3.fromRGB(42, 26, 78) }):Play()
 				else
-					tween:Create(thumb,TweenInfo.new(0.18),{Position=UDim2.new(0,2,0.5,-9),BackgroundColor3=C.purpleFade}):Play()
-					tween:Create(track,TweenInfo.new(0.18),{BackgroundColor3=Color3.fromRGB(26,26,46)}):Play()
+					tween:Create(thumb, TweenInfo.new(0.18), { Position = UDim2.new(0, 2, 0.5, -9), BackgroundColor3 = C.purpleFade }):Play()
+					tween:Create(track, TweenInfo.new(0.18), { BackgroundColor3 = Color3.fromRGB(26, 26, 46) }):Play()
 				end
 				if cfg2.Callback then cfg2.Callback(v) end
-				if sendNotif then notify(cfg2.Name or "Toggle",v and "Enabled" or "Disabled",v and C.green or C.red) end
-				triggerAutoSave()
+				if sendNotif then
+					notify(cfg2.Name or "Toggle", v and "Enabled" or "Disabled", v and C.green or C.red)
+				end
 			end
+
 			setVal(val)
 			track.InputBegan:Connect(function(i)
-				if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then setVal(not val) end
+				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+					setVal(not val)
+				end
 			end)
-			if cfg2.Flag then table.insert(saveItems,{flag=cfg2.Flag,setter=function(v) setVal(v==true or v=="true") end}) end
-			local obj={}
+
+			if cfg2.Flag then
+				table.insert(saveItems, { flag = cfg2.Flag, setter = function(v) setVal(v == true or v == "true") end })
+			end
+
+			local obj = {}
 			function obj:Set(v) setVal(v) end
 			function obj:Get() return val end
 			return obj
 		end
 
-		-- Button
+		-- ── Button ────────────────────────────────────────────────────────────
+
 		function tabObj:CreateButton(cfg2)
-			cfg2=cfg2 or {}
-			local sendNotif=cfg2.SendNotification~=false
-			local row=makeRow(48);rowLabel(cfg2.Name or "Button",cfg2.Description,row)
-			table.insert(allElements,{frame=row,name=cfg2.Name or "Button"})
-			local btn2=newInst("TextButton",{
-				Size=UDim2.new(0,66,0,30),Position=UDim2.new(1,-78,0.5,-15),
-				BackgroundColor3=Color3.fromRGB(26,14,46),BorderSizePixel=0,
-				Text=cfg2.ButtonText or "Run",
-				TextColor3=cfg2.Danger and C.red or C.purple,
-				Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=row,
-			});corner(8,btn2)
-			stroke(cfg2.Danger and Color3.fromRGB(160,48,48) or C.border,1,btn2)
+			cfg2 = cfg2 or {}
+			local sendNotif = cfg2.SendNotification ~= false
+			local row = makeRow(48); rowLabel(cfg2.Name or "Button", cfg2.Description, row)
+
+			local btn2 = newInst("TextButton", {
+				Size = UDim2.new(0, 66, 0, 30), Position = UDim2.new(1, -78, 0.5, -15),
+				BackgroundColor3 = Color3.fromRGB(26, 14, 46), BorderSizePixel = 0,
+				Text = cfg2.ButtonText or "Run",
+				TextColor3 = cfg2.Danger and C.red or C.purple,
+				Font = Enum.Font.GothamBold, TextSize = 11, ZIndex = 4, Parent = row,
+			}); corner(8, btn2)
+			stroke(cfg2.Danger and Color3.fromRGB(160, 48, 48) or C.border, 1, btn2)
+
 			btn2.MouseButton1Click:Connect(function()
-				tween:Create(btn2,TweenInfo.new(0.07),{Size=UDim2.new(0,58,0,26),Position=UDim2.new(1,-74,0.5,-13)}):Play()
-				task.delay(0.07,function()
-					tween:Create(btn2,TweenInfo.new(0.12,Enum.EasingStyle.Back),{Size=UDim2.new(0,66,0,30),Position=UDim2.new(1,-78,0.5,-15)}):Play()
+				tween:Create(btn2, TweenInfo.new(0.07), { Size = UDim2.new(0, 58, 0, 26), Position = UDim2.new(1, -74, 0.5, -13) }):Play()
+				task.delay(0.07, function()
+					tween:Create(btn2, TweenInfo.new(0.12, Enum.EasingStyle.Back), { Size = UDim2.new(0, 66, 0, 30), Position = UDim2.new(1, -78, 0.5, -15) }):Play()
 				end)
-				local ok,err=pcall(function() if cfg2.Callback then cfg2.Callback() end end)
-				flashButton(btn2,ok)
+				if cfg2.Callback then cfg2.Callback() end
 				if sendNotif then
-					if ok then notify(cfg2.Name or "Button",cfg2.NotifContent or "Button pressed",cfg2.Danger and C.red or C.purple)
-					else notify(cfg2.Name or "Button","Error: "..tostring(err),C.red) end
+					notify(cfg2.Name or "Button", cfg2.NotifContent or "Button pressed", cfg2.Danger and C.red or C.purple)
 				end
 			end)
-			local obj={}
-			function obj:Set(txt) btn2.Text=tostring(txt) end
+
+			local obj = {}
+			function obj:Set(txt) btn2.Text = tostring(txt) end
 			return obj
 		end
 
-		-- Slider
+		-- ── Slider ────────────────────────────────────────────────────────────
+
 		function tabObj:CreateSlider(cfg2)
-			cfg2=cfg2 or {}
-			local range=cfg2.Range or {0,100};local inc=cfg2.Increment or 1
-			local suffix=cfg2.Suffix or "";local cur=cfg2.CurrentValue or range[1]
-			local sendNotif=cfg2.SendNotification==true
-			if cfg2.Flag then flags[cfg2.Flag]=cur end
-			local row=makeRow(64);rowLabel(cfg2.Name or "Slider",nil,row)
-			table.insert(allElements,{frame=row,name=cfg2.Name or "Slider"})
-			local valLbl=newInst("TextLabel",{
-				Size=UDim2.new(0,80,0,18),Position=UDim2.new(1,-88,0,14),
-				BackgroundTransparency=1,Text=tostring(cur).." "..suffix,
-				TextColor3=C.purple,TextXAlignment=Enum.TextXAlignment.Right,
-				Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=row,
+			cfg2 = cfg2 or {}
+			local range = cfg2.Range or { 0, 100 }
+			local inc = cfg2.Increment or 1
+			local suffix = cfg2.Suffix or ""
+			local cur = cfg2.CurrentValue or range[1]
+			local sendNotif = cfg2.SendNotification == true
+			if cfg2.Flag then flags[cfg2.Flag] = cur end
+
+			local row = makeRow(64); rowLabel(cfg2.Name or "Slider", nil, row)
+
+			local valLbl = newInst("TextLabel", {
+				Size = UDim2.new(0, 80, 0, 18), Position = UDim2.new(1, -88, 0, 14),
+				BackgroundTransparency = 1, Text = tostring(cur) .. " " .. suffix,
+				TextColor3 = C.purple, TextXAlignment = Enum.TextXAlignment.Right,
+				Font = Enum.Font.GothamBold, TextSize = 11, ZIndex = 4, Parent = row,
 			})
-			local trackBg=newInst("Frame",{
-				Size=UDim2.new(1,-22,0,4),Position=UDim2.new(0,11,0,44),
-				BackgroundColor3=Color3.fromRGB(30,20,50),BorderSizePixel=0,ZIndex=4,Parent=row,
-			});corner(99,trackBg)
-			local fill=newInst("Frame",{
-				Size=UDim2.new(0,0,1,0),BackgroundColor3=C.purple,
-				BorderSizePixel=0,ZIndex=5,Parent=trackBg,
-			});corner(99,fill)
-			local knob=newInst("Frame",{
-				Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,0,0.5,-8),
-				BackgroundColor3=C.purple,BorderSizePixel=0,ZIndex=6,Parent=trackBg,
-			});corner(99,knob);stroke(C.bgDeep,2,knob)
+			local trackBg = newInst("Frame", {
+				Size = UDim2.new(1, -22, 0, 4), Position = UDim2.new(0, 11, 0, 44),
+				BackgroundColor3 = Color3.fromRGB(30, 20, 50), BorderSizePixel = 0, ZIndex = 4, Parent = row,
+			}); corner(99, trackBg)
+			local fill = newInst("Frame", {
+				Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = C.purple,
+				BorderSizePixel = 0, ZIndex = 5, Parent = trackBg,
+			}); corner(99, fill)
+			local knob = newInst("Frame", {
+				Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(0, 0, 0.5, -8),
+				BackgroundColor3 = C.purple, BorderSizePixel = 0, ZIndex = 6, Parent = trackBg,
+			}); corner(99, knob); stroke(C.bgDeep, 2, knob)
+
 			local function setSlider(v)
-				v=math.clamp(math.round(v/inc)*inc,range[1],range[2]);cur=v
-				if cfg2.Flag then flags[cfg2.Flag]=v end
-				local pct=(v-range[1])/(range[2]-range[1])
-				fill.Size=UDim2.new(pct,0,1,0);knob.Position=UDim2.new(pct,-8,0.5,-8)
-				valLbl.Text=tostring(v).." "..suffix
+				v = math.clamp(math.round(v / inc) * inc, range[1], range[2]); cur = v
+				if cfg2.Flag then flags[cfg2.Flag] = v end
+				local pct = (v - range[1]) / (range[2] - range[1])
+				fill.Size = UDim2.new(pct, 0, 1, 0); knob.Position = UDim2.new(pct, -8, 0.5, -8)
+				valLbl.Text = tostring(v) .. " " .. suffix
 				if cfg2.Callback then cfg2.Callback(v) end
-				if sendNotif then notify(cfg2.Name or "Slider",tostring(v).." "..suffix,C.purple) end
-				triggerAutoSave()
+				if sendNotif then notify(cfg2.Name or "Slider", tostring(v) .. " " .. suffix, C.purple) end
 			end
 			setSlider(cur)
-			local sliding=false
+
+			local sliding = false
 			trackBg.InputBegan:Connect(function(i)
-				if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sliding=true end
-			end)
-			input.InputEnded:Connect(function(i)
-				if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sliding=false end
-			end)
-			input.InputChanged:Connect(function(i)
-				if sliding and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-					local rel=(i.Position.X-trackBg.AbsolutePosition.X)/trackBg.AbsoluteSize.X
-					setSlider(range[1]+(range[2]-range[1])*math.clamp(rel,0,1))
+				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+					sliding = true
 				end
 			end)
-			if cfg2.Flag then table.insert(saveItems,{flag=cfg2.Flag,setter=function(v) setSlider(tonumber(v) or cur) end}) end
-			local obj={}
+			input.InputEnded:Connect(function(i)
+				if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+					sliding = false
+				end
+			end)
+			input.InputChanged:Connect(function(i)
+				if sliding and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+					local rel = (i.Position.X - trackBg.AbsolutePosition.X) / trackBg.AbsoluteSize.X
+					setSlider(range[1] + (range[2] - range[1]) * math.clamp(rel, 0, 1))
+				end
+			end)
+
+			if cfg2.Flag then
+				table.insert(saveItems, { flag = cfg2.Flag, setter = function(v) setSlider(tonumber(v) or cur) end })
+			end
+
+			local obj = {}
 			function obj:Set(v) setSlider(v) end
 			function obj:Get() return cur end
 			return obj
 		end
 
-		-- Dropdown
+		-- ── Dropdown ──────────────────────────────────────────────────────────
+
 		function tabObj:CreateDropdown(cfg2)
-			cfg2=cfg2 or {}
-			local options=cfg2.Options or {}
-			local multiSel=cfg2.MultipleOptions or false
-			local selected=multiSel and {} or (cfg2.CurrentOption or options[1] or "")
-			local sendNotif=cfg2.SendNotification~=false
-			if cfg2.Flag then flags[cfg2.Flag]=selected end
-			local open=false
-			local row=makeRow(nil,true);padding(10,10,10,10,row);listLayout(row,6)
-			table.insert(allElements,{frame=row,name=cfg2.Name or "Dropdown"})
-			local topLine=newInst("Frame",{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,ZIndex=4,Parent=row})
-			newInst("TextLabel",{
-				Size=UDim2.new(0.6,0,1,0),BackgroundTransparency=1,
-				Text=cfg2.Name or "Dropdown",TextColor3=C.textMain,
-				TextXAlignment=Enum.TextXAlignment.Left,
-				Font=Enum.Font.Gotham,TextSize=12,ZIndex=4,Parent=topLine, -- lighter font
+			cfg2 = cfg2 or {}
+			local options = cfg2.Options or {}
+			local multiSel = cfg2.MultipleOptions or false
+			local selected = multiSel and {} or (cfg2.CurrentOption or options[1] or "")
+			local sendNotif = cfg2.SendNotification ~= false
+			if cfg2.Flag then flags[cfg2.Flag] = selected end
+			local open = false
+
+			local row = makeRow(nil, true); padding(10, 10, 10, 10, row); listLayout(row, 6)
+
+			local topLine = newInst("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, ZIndex = 4, Parent = row })
+			newInst("TextLabel", {
+				Size = UDim2.new(0.6, 0, 1, 0), BackgroundTransparency = 1,
+				Text = cfg2.Name or "Dropdown", TextColor3 = C.textMain,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Enum.Font.GothamBold, TextSize = 12, ZIndex = 4, Parent = topLine,
 			})
+
 			local function displayText()
-				if multiSel then if #selected==0 then return "None  v" end;return table.concat(selected,", ").."  v"
-				else return tostring(selected).."  v" end
+				if multiSel then
+					if #selected == 0 then return "None  v" end
+					return table.concat(selected, ", ") .. "  v"
+				else return tostring(selected) .. "  v" end
 			end
-			local dropBtn=newInst("TextButton",{
-				Size=UDim2.new(1,0,0,30),BackgroundColor3=Color3.fromRGB(26,14,46),
-				BorderSizePixel=0,Text=displayText(),TextColor3=C.textLight, -- lighter
-				Font=Enum.Font.Gotham,TextSize=11,ZIndex=4,Parent=row, -- not bold
-			});corner(8,dropBtn);stroke(C.border,1,dropBtn)
-			local menuFrame=newInst("Frame",{
-				Size=UDim2.new(1,0,0,0),BackgroundColor3=Color3.fromRGB(19,16,38),
-				BorderSizePixel=0,ZIndex=5,ClipsDescendants=true,Visible=false,Parent=row,
-			});corner(8,menuFrame);stroke(C.border,1,menuFrame);listLayout(menuFrame,0)
-			local optBtns={}
+
+			local dropBtn = newInst("TextButton", {
+				Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(26, 14, 46),
+				BorderSizePixel = 0, Text = displayText(), TextColor3 = C.purple,
+				Font = Enum.Font.GothamBold, TextSize = 11, ZIndex = 4, Parent = row,
+			}); corner(8, dropBtn); stroke(C.border, 1, dropBtn)
+
+			local menuFrame = newInst("Frame", {
+				Size = UDim2.new(1, 0, 0, 0), BackgroundColor3 = Color3.fromRGB(19, 16, 38),
+				BorderSizePixel = 0, ZIndex = 5, ClipsDescendants = true,
+				Visible = false, Parent = row,
+			}); corner(8, menuFrame); stroke(C.border, 1, menuFrame); listLayout(menuFrame, 0)
+
+			local optBtns = {}
+
 			local function isSelected(opt)
-				if multiSel then for _,v in ipairs(selected) do if v==opt then return true end end;return false
-				else return selected==opt end
+				if multiSel then
+					for _, v in ipairs(selected) do if v == opt then return true end end
+					return false
+				else return selected == opt end
 			end
 			local function refreshColors()
-				for opt,ob in pairs(optBtns) do
-					tween:Create(ob,TweenInfo.new(0.1),{TextColor3=isSelected(opt) and C.purple or C.textLight}):Play()
+				for opt, ob in pairs(optBtns) do
+					tween:Create(ob, TweenInfo.new(0.1), { TextColor3 = isSelected(opt) and C.purple or C.textDim }):Play()
 				end
 			end
 			local function buildOptions()
-				for _,c in pairs(menuFrame:GetChildren()) do if c:IsA("GuiObject") then c:Destroy() end end
-				optBtns={}
-				for _,opt in ipairs(options) do
-					local ob=newInst("TextButton",{
-						Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,
-						Text=opt,TextColor3=isSelected(opt) and C.purple or C.textLight,
-						Font=Enum.Font.Gotham,TextSize=11,ZIndex=6,Parent=menuFrame, -- not bold
+				for _, c in pairs(menuFrame:GetChildren()) do if c:IsA("GuiObject") then c:Destroy() end end
+				optBtns = {}
+				for _, opt in ipairs(options) do
+					local ob = newInst("TextButton", {
+						Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1,
+						Text = opt, TextColor3 = isSelected(opt) and C.purple or C.textDim,
+						Font = Enum.Font.Gotham, TextSize = 11, ZIndex = 6, Parent = menuFrame,
 					})
-					optBtns[opt]=ob
+					optBtns[opt] = ob
 					ob.MouseButton1Click:Connect(function()
 						if multiSel then
-							local found=false
-							for i,v in ipairs(selected) do if v==opt then table.remove(selected,i);found=true;break end end
-							if not found then table.insert(selected,opt) end
-							refreshColors();dropBtn.Text=displayText()
-							if cfg2.Flag then flags[cfg2.Flag]=selected end
+							local found = false
+							for i, v in ipairs(selected) do if v == opt then table.remove(selected, i); found = true; break end end
+							if not found then table.insert(selected, opt) end
+							refreshColors(); dropBtn.Text = displayText()
+							if cfg2.Flag then flags[cfg2.Flag] = selected end
 							if cfg2.Callback then cfg2.Callback(selected) end
-							if sendNotif then notify(cfg2.Name or "Dropdown","Selected: "..displayText():gsub("  v",""),C.purple) end
+							if sendNotif then notify(cfg2.Name or "Dropdown", "Selected: " .. displayText():gsub("  v", ""), C.purple) end
 						else
-							selected=opt;dropBtn.Text=opt.."  v";open=false
-							tween:Create(menuFrame,TweenInfo.new(0.18,Enum.EasingStyle.Quad),{Size=UDim2.new(1,0,0,0)}):Play()
-							task.delay(0.2,function() menuFrame.Visible=false end)
-							if cfg2.Flag then flags[cfg2.Flag]=opt end
+							selected = opt; dropBtn.Text = opt .. "  v"; open = false
+							tween:Create(menuFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { Size = UDim2.new(1, 0, 0, 0) }):Play()
+							task.delay(0.2, function() menuFrame.Visible = false end)
+							if cfg2.Flag then flags[cfg2.Flag] = opt end
 							if cfg2.Callback then cfg2.Callback(opt) end
-							if sendNotif then notify(cfg2.Name or "Dropdown","Selected: "..opt,C.purple) end
+							if sendNotif then notify(cfg2.Name or "Dropdown", "Selected: " .. opt, C.purple) end
 						end
-						triggerAutoSave()
 					end)
 					ob.MouseEnter:Connect(function()
-						tween:Create(ob,TweenInfo.new(0.1),{BackgroundTransparency=0.7,BackgroundColor3=C.purpleFade}):Play()
+						tween:Create(ob, TweenInfo.new(0.1), { BackgroundTransparency = 0.7, BackgroundColor3 = C.purpleFade }):Play()
 					end)
 					ob.MouseLeave:Connect(function()
-						tween:Create(ob,TweenInfo.new(0.1),{BackgroundTransparency=1}):Play()
+						tween:Create(ob, TweenInfo.new(0.1), { BackgroundTransparency = 1 }):Play()
 					end)
 				end
 			end
 			buildOptions()
+
 			dropBtn.MouseButton1Click:Connect(function()
-				open=not open
+				open = not open
 				if open then
-					menuFrame.Visible=true;menuFrame.Size=UDim2.new(1,0,0,0)
-					tween:Create(menuFrame,TweenInfo.new(0.25,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
-						Size=UDim2.new(1,0,0,#options*30)
+					menuFrame.Visible = true; menuFrame.Size = UDim2.new(1, 0, 0, 0)
+					tween:Create(menuFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+						Size = UDim2.new(1, 0, 0, #options * 30)
 					}):Play()
-					dropBtn.Text=displayText():gsub("v$","^")
+					dropBtn.Text = displayText():gsub("v$", "^")
 				else
-					tween:Create(menuFrame,TweenInfo.new(0.18,Enum.EasingStyle.Quad),{Size=UDim2.new(1,0,0,0)}):Play()
-					task.delay(0.2,function() menuFrame.Visible=false end)
-					dropBtn.Text=displayText()
+					tween:Create(menuFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { Size = UDim2.new(1, 0, 0, 0) }):Play()
+					task.delay(0.2, function() menuFrame.Visible = false end)
+					dropBtn.Text = displayText()
 				end
 			end)
+
 			if cfg2.Flag then
-				table.insert(saveItems,{flag=cfg2.Flag,setter=function(v)
-					selected=v;if cfg2.Flag then flags[cfg2.Flag]=v end
-					dropBtn.Text=displayText();refreshColors()
-				end})
+				table.insert(saveItems, { flag = cfg2.Flag, setter = function(v)
+					selected = v
+					if cfg2.Flag then flags[cfg2.Flag] = v end
+					dropBtn.Text = displayText(); refreshColors()
+				end })
 			end
-			local obj={}
-			function obj:Set(v) selected=v;if cfg2.Flag then flags[cfg2.Flag]=v end;dropBtn.Text=displayText();refreshColors() end
+
+			local obj = {}
+			function obj:Set(v) selected = v; if cfg2.Flag then flags[cfg2.Flag] = v end; dropBtn.Text = displayText(); refreshColors() end
 			function obj:Refresh(newOpts)
-				options=newOpts
-				if multiSel then selected={} else selected=newOpts[1] or "" end
-				dropBtn.Text=displayText()
-				if open then menuFrame.Visible=false;open=false end
+				options = newOpts
+				if multiSel then selected = {} else selected = newOpts[1] or "" end
+				dropBtn.Text = displayText()
+				if open then menuFrame.Visible = false; open = false end
 				buildOptions()
 			end
 			function obj:Get() return selected end
 			return obj
 		end
 
-		-- Input
+		-- ── Input ─────────────────────────────────────────────────────────────
+
 		function tabObj:CreateInput(cfg2)
-			cfg2=cfg2 or {}
-			local val=cfg2.CurrentValue or ""
-			if cfg2.Flag then flags[cfg2.Flag]=val end
-			local row=makeRow(nil,true);padding(10,10,10,10,row);listLayout(row,6)
-			table.insert(allElements,{frame=row,name=cfg2.Name or "Input"})
-			local topLine=newInst("Frame",{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,ZIndex=4,Parent=row})
-			newInst("TextLabel",{
-				Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
-				Text=cfg2.Name or "Input",TextColor3=C.textMain,
-				TextXAlignment=Enum.TextXAlignment.Left,
-				Font=Enum.Font.Gotham,TextSize=12,ZIndex=4,Parent=topLine, -- not bold
+			cfg2 = cfg2 or {}
+			local val = cfg2.CurrentValue or ""
+			if cfg2.Flag then flags[cfg2.Flag] = val end
+
+			local row = makeRow(nil, true); padding(10, 10, 10, 10, row); listLayout(row, 6)
+			local topLine = newInst("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, ZIndex = 4, Parent = row })
+			newInst("TextLabel", {
+				Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+				Text = cfg2.Name or "Input", TextColor3 = C.textMain,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Enum.Font.GothamBold, TextSize = 12, ZIndex = 4, Parent = topLine,
 			})
-			local box=newInst("TextBox",{
-				Size=UDim2.new(1,0,0,30),BackgroundColor3=C.inputBg,
-				BorderSizePixel=0,Text=val,
-				PlaceholderText=cfg2.PlaceholderText or "Type here...",
-				PlaceholderColor3=C.textDim,TextColor3=C.textLight, -- lighter
-				Font=Enum.Font.Gotham,TextSize=11,ZIndex=4, -- not bold
-				ClearTextOnFocus=false,Parent=row,
-			});corner(8,box);stroke(C.border,1,box);padding(0,0,8,8,box)
+			local box = newInst("TextBox", {
+				Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C.inputBg,
+				BorderSizePixel = 0, Text = val,
+				PlaceholderText = cfg2.PlaceholderText or "Type here...",
+				PlaceholderColor3 = C.textDim, TextColor3 = C.purple,
+				Font = Enum.Font.Gotham, TextSize = 11, ZIndex = 4,
+				ClearTextOnFocus = false, Parent = row,
+			}); corner(8, box); stroke(C.border, 1, box); padding(0, 0, 8, 8, box)
+
 			box:GetPropertyChangedSignal("Text"):Connect(function()
-				val=box.Text;if cfg2.Flag then flags[cfg2.Flag]=val end
-				if cfg2.Callback then cfg2.Callback(val) end;triggerAutoSave()
+				val = box.Text
+				if cfg2.Flag then flags[cfg2.Flag] = val end
+				if cfg2.Callback then cfg2.Callback(val) end
 			end)
 			if cfg2.RemoveTextAfterFocusLost then
-				box.FocusLost:Connect(function() box.Text="";val="";if cfg2.Flag then flags[cfg2.Flag]="" end end)
+				box.FocusLost:Connect(function() box.Text = ""; val = ""; if cfg2.Flag then flags[cfg2.Flag] = "" end end)
 			end
+
 			if cfg2.Flag then
-				table.insert(saveItems,{flag=cfg2.Flag,setter=function(v)
-					box.Text=tostring(v);val=tostring(v);if cfg2.Flag then flags[cfg2.Flag]=val end
-				end})
+				table.insert(saveItems, { flag = cfg2.Flag, setter = function(v)
+					box.Text = tostring(v); val = tostring(v)
+					if cfg2.Flag then flags[cfg2.Flag] = val end
+				end })
 			end
-			local obj={}
-			function obj:Set(v) box.Text=tostring(v);val=tostring(v);if cfg2.Flag then flags[cfg2.Flag]=val end end
+
+			local obj = {}
+			function obj:Set(v) box.Text = tostring(v); val = tostring(v); if cfg2.Flag then flags[cfg2.Flag] = val end end
 			function obj:Get() return val end
 			return obj
 		end
 
-		-- Label
-		function tabObj:CreateLabel(txt,_icon,col)
-			col=col or C.textMain
-			local lbl=newInst("TextLabel",{
-				Size=UDim2.new(1,0,0,22),BackgroundTransparency=1,
-				Text=tostring(txt),TextColor3=col,
-				TextXAlignment=Enum.TextXAlignment.Left,
-				Font=Enum.Font.Gotham,TextSize=11,ZIndex=3,Parent=tabContainer,
-			});padding(0,0,6,0,lbl)
-			local obj={}
-			function obj:Set(newTxt,_i,newCol)
-				lbl.Text=tostring(newTxt);if newCol then lbl.TextColor3=newCol end
+		-- ── Label ─────────────────────────────────────────────────────────────
+
+		function tabObj:CreateLabel(txt, _icon, col, _ignoreTheme)
+			col = col or C.textMain
+			local lbl = newInst("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
+				Text = tostring(txt), TextColor3 = col,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Enum.Font.GothamBold, TextSize = 11, ZIndex = 3, Parent = tabContainer,
+			}); padding(0, 0, 6, 0, lbl)
+			local obj = {}
+			function obj:Set(newTxt, _i, newCol)
+				lbl.Text = tostring(newTxt)
+				if newCol then lbl.TextColor3 = newCol end
 			end
 			return obj
 		end
 
-		-- Paragraph
+		-- ── Paragraph ─────────────────────────────────────────────────────────
+
 		function tabObj:CreateParagraph(cfg2)
-			cfg2=cfg2 or {}
-			local row=makeRow(nil,true);padding(10,10,12,12,row);listLayout(row,4)
-			table.insert(allElements,{frame=row,name=cfg2.Title or "Paragraph"})
-			newInst("TextLabel",{
-				Size=UDim2.new(1,0,0,16),BackgroundTransparency=1,
-				Text=cfg2.Title or "",TextColor3=C.textMain,
-				TextXAlignment=Enum.TextXAlignment.Left,
-				Font=Enum.Font.GothamBold,TextSize=12,ZIndex=4,Parent=row,
+			cfg2 = cfg2 or {}
+			local row = makeRow(nil, true); padding(10, 10, 12, 12, row); listLayout(row, 4)
+			local titleLbl = newInst("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
+				Text = cfg2.Title or "", TextColor3 = C.textMain,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Enum.Font.GothamBold, TextSize = 12, ZIndex = 4, Parent = row,
 			})
-			local contentLbl=newInst("TextLabel",{
-				Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,
-				Text=cfg2.Content or "",TextColor3=C.textDim,
-				TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
-				Font=Enum.Font.Gotham,TextSize=11,
-				AutomaticSize=Enum.AutomaticSize.Y,ZIndex=4,Parent=row,
+			local contentLbl = newInst("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1,
+				Text = cfg2.Content or "", TextColor3 = C.textDim,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextWrapped = true, Font = Enum.Font.Gotham, TextSize = 11,
+				AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 4, Parent = row,
 			})
-			local obj={}
+			local obj = {}
 			function obj:Set(newCfg)
-				if newCfg.Content then contentLbl.Text=newCfg.Content end
+				if newCfg.Title then titleLbl.Text = newCfg.Title end
+				if newCfg.Content then contentLbl.Text = newCfg.Content end
 			end
 			return obj
 		end
 
-		-- SectionLabel
+		-- ── SectionLabel ──────────────────────────────────────────────────────
+
 		function tabObj:CreateSectionLabel(txt)
-			newInst("TextLabel",{
-				Size=UDim2.new(1,0,0,18),BackgroundTransparency=1,
-				Text=txt,TextColor3=C.textDim,
-				TextXAlignment=Enum.TextXAlignment.Left,
-				Font=Enum.Font.GothamBold,TextSize=9,ZIndex=3,Parent=tabContainer,
-			})
+			local lbl = newInst("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
+				Text = txt, TextColor3 = C.textDim,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Font = Enum.Font.GothamBold, TextSize = 9, ZIndex = 3, Parent = tabContainer,
+			}); padding(0, 0, 6, 0, lbl)
 		end
 
 		return tabObj
 	end
 
+	-- ── Window-level methods ───────────────────────────────────────────────────
+
 	function winObj:GetFlag(flag) return flags[flag] end
 
-	function winObj:Notify(title2,content2,col2)
-		if typeof(content2)=="Color3" then col2=content2;content2="" end
-		notify(tostring(title2 or "Notification"),tostring(content2 or ""),col2 or C.purple)
+	function winObj:Notify(title2, content2, col2)
+		if typeof(content2) == "Color3" then col2 = content2; content2 = "" end
+		notify(tostring(title2 or "Notification"), tostring(content2 or ""), col2 or C.purple)
 	end
 
 	function winObj:SaveConfiguration()
-		if not configEnabled then notify("Config","Configuration saving is not enabled.",C.red);return false end
-		local ok=saveConfig()
-		notify("Config",ok and "Saved successfully!" or "Save failed!",ok and C.green or C.red)
+		local ok = saveConfig()
+		notify("Config", ok and "Saved successfully!" or "Save failed!", ok and C.green or C.red)
 		return ok
 	end
 
 	function winObj:LoadConfiguration()
-		if not configEnabled then notify("Config","Configuration saving is not enabled.",C.red);return false end
-		local data=loadConfig()
-		if not data then notify("Config","No save file found",C.red);return false end
-		for _,item in ipairs(saveItems) do
-			local v=data[item.flag]
-			if v~=nil then pcall(item.setter,v) end
+		local data = loadConfig()
+		if not data then
+			notify("Config", "No save file found", C.red)
+			return false
 		end
-		showConfigBanner(win)
+		for _, item in ipairs(saveItems) do
+			local v = data[item.flag]
+			if v ~= nil then pcall(item.setter, v) end
+		end
+		notify("Config", "Loaded successfully!", C.green)
 		return true
-	end
-
-	function winObj:Destroy()
-		_G.__VeloraUI_Running=nil;screen:Destroy()
 	end
 
 	return winObj
