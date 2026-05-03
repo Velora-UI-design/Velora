@@ -726,7 +726,7 @@ function VeloraUI:CreateWindow(cfg)
 		-- FIXED: more visible scrollbar
 		ScrollBarThickness=4,
 		ScrollBarImageColor3=Color3.fromRGB(120,70,230),
-		ScrollingBarInset=Enum.ScrollBarInset.ScrollBar,
+		ScrollBarInset = Enum.ScrollBarInset.ScrollBar,
 		CanvasSize=UDim2.new(0,0,0,0),ZIndex=2,ClipsDescendants=true,Parent=win})
 	padding(8,8,8,8,bodyFrame)
 	local bodyLayout=listLayout(bodyFrame,6)
