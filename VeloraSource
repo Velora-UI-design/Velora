@@ -51,6 +51,73 @@ local flags    = {}
 local saveItems= {}
 local autoSave = false
 
+-- ── Custom Asset Loader (like Rayfield) ───────────────────────────────────────
+-- Downloads PNGs from GitHub and uses getcustomasset for proper rendering.
+-- Falls back to rbxassetid if getcustomasset is unavailable.
+local customAssets = {}
+local ASSET_FOLDER = "VeloraUI_Assets"
+
+local function ensureFolderSafe(folder)
+	pcall(function() if not isfolder(folder) then makefolder(folder) end end)
+end
+
+local function loadCustomAsset(id, url)
+	-- Already loaded
+	if customAssets[id] then return customAssets[id] end
+	-- Try filesystem + getcustomasset path (like Rayfield does)
+	local hasCGA  = type(getcustomasset) == "function"
+	local hasFS   = type(writefile) == "function" and type(isfile) == "function"
+	if hasCGA and hasFS then
+		ensureFolderSafe(ASSET_FOLDER)
+		local path = ASSET_FOLDER .. "/" .. id .. ".png"
+		if not isfile(path) then
+			-- fetch from GitHub raw URL
+			local ok, body = pcall(function()
+				-- use the request function available
+				local reqFunc = (syn and syn.request) or (fluxus and fluxus.request) or (http and http.request) or http_request or request
+				if reqFunc then
+					local res = reqFunc({ Url = url, Method = "GET" })
+					return res.Body
+				else
+					return game:HttpGet(url)
+				end
+			end)
+			if ok and body and #body > 0 then
+				pcall(function() writefile(path, body) end)
+			end
+		end
+		if isfile(path) then
+			local ok2, asset = pcall(getcustomasset, path)
+			if ok2 and asset then
+				customAssets[id] = asset
+				return asset
+			end
+		end
+	end
+	-- Fallback: direct rbxassetid (won't render on all executors but won't break)
+	return nil
+end
+
+-- ── Velora PNG assets hosted on GitHub ───────────────────────────────────────
+-- These are loaded in the background so the UI still shows instantly.
+local VeloraAssets = {
+	Logo    = { id = "velora_logo",    url = "https://raw.githubusercontent.com/Velora-UI-design/Pngs/main/Lightning.png" },
+	Topbar  = { id = "velora_topbar",  url = "https://raw.githubusercontent.com/Velora-UI-design/Pngs/main/Lightning.png" },
+}
+
+-- pre-load assets async so they're ready by the time the window opens
+task.spawn(function()
+	for _, asset in pairs(VeloraAssets) do
+		pcall(loadCustomAsset, asset.id, asset.url)
+	end
+end)
+
+local function getVeloraAsset(key)
+	local a = VeloraAssets[key]
+	if not a then return "" end
+	return customAssets[a.id] or ""
+end
+
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 local function newInst(cls,props)
 	local o=Instance.new(cls)
@@ -89,8 +156,7 @@ local function resolveIcon(iconId)
 	if type(iconId)=="number" then return "rbxassetid://"..iconId end
 	local s=tostring(iconId)
 	if s:sub(1,13)=="rbxassetid://" then return s end
-	if s:sub(1,4)=="http" then return s end -- URL passthrough (ImageLabel supports it in some executors)
-	-- numeric string
+	if s:sub(1,4)=="http" then return s end
 	if tonumber(s) then return "rbxassetid://"..s end
 	return s
 end
@@ -99,12 +165,9 @@ end
 local CONFIG_FOLDER = "VeloraUI_Configs"
 local CONFIG_FILE   = nil
 
-local function ensureFolder(folder)
-	pcall(function() if not isfolder(folder) then makefolder(folder) end end)
-end
 local function saveConfig()
 	if not CONFIG_FILE then return false end
-	ensureFolder(CONFIG_FOLDER)
+	ensureFolderSafe(CONFIG_FOLDER)
 	local data={}
 	for flag,val in pairs(flags) do
 		local t=type(val)
@@ -198,7 +261,11 @@ local function showConfigBanner(win)
 end
 
 -- ── Confirm dialog ────────────────────────────────────────────────────────────
+-- dialogOpen guard prevents spam-clicking the red dot
+local dialogOpen = false
 local function buildConfirmDialog(screen,onYes)
+	if dialogOpen then return end
+	dialogOpen = true
 	local overlay=newInst("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.fromRGB(0,0,0),
 		BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=300,Parent=screen})
 	local box=newInst("Frame",{Size=UDim2.new(0,280,0,130),Position=UDim2.new(0.5,-140,0.5,-65),
@@ -216,6 +283,7 @@ local function buildConfirmDialog(screen,onYes)
 		Font=Enum.Font.GothamBold,TextSize=13,ZIndex=302,Parent=box});corner(8,noBtn);stroke(C.red,1,noBtn)
 	spring(box,{BackgroundTransparency=0},0.3)
 	local function dismiss(cb)
+		dialogOpen = false
 		tw(box,{BackgroundTransparency=1,Position=UDim2.new(0.5,-140,0.55,-65)},0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.In)
 		tw(overlay,{BackgroundTransparency=1},0.2)
 		task.delay(0.22,function() overlay:Destroy();if cb then cb() end end)
@@ -239,7 +307,6 @@ end
 -- ── KEY SYSTEM ────────────────────────────────────────────────────────────────
 local function showKeySystem(screen,keyCfg,onSuccess)
 	local title      = keyCfg.Title    or "Velora UI"
-	local note       = keyCfg.Note     or "No method of obtaining the key is provided."
 	local saveKey    = keyCfg.SaveKey  ~= false
 	local maxAtt     = keyCfg.MaxAttempts or math.huge
 	local fileName   = (keyCfg.FileName or "VeloraKey")..".txt"
@@ -251,7 +318,7 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 	if type(validKeys)=="string" then validKeys={validKeys} end
 
 	if saveKey then
-		ensureFolder(CONFIG_FOLDER)
+		ensureFolderSafe(CONFIG_FOLDER)
 		local ok,saved=pcall(function() return readfile(keyFile) end)
 		if ok and saved and saved~="" then
 			local trimmed=saved:match("^%s*(.-)%s*$")
@@ -282,12 +349,21 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 	newInst("Frame",{Size=UDim2.new(0.55,0,0,1),Position=UDim2.new(0.225,0,0,0),
 		BackgroundColor3=C.purple,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=402,Parent=card})
 
+	-- Logo circle with Velora Lightning PNG (like how Rayfield puts discord icon on notifications)
 	local logoBg=newInst("Frame",{Size=UDim2.new(0,64,0,64),Position=UDim2.new(0.5,-32,0,-32),
 		BackgroundColor3=Color3.fromRGB(16,10,34),BorderSizePixel=0,ZIndex=403,Parent=card})
 	corner(99,logoBg);stroke(C.border,1.5,logoBg)
-	newInst("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
-		Text=title:sub(1,3):upper(),TextColor3=C.purple,
-		Font=Enum.Font.GothamBlack,TextSize=18,ZIndex=404,Parent=logoBg})
+
+	-- Try PNG asset first, fallback to text initials
+	local logoAsset = getVeloraAsset("Logo")
+	if logoAsset ~= "" then
+		newInst("ImageLabel",{Size=UDim2.new(0,38,0,38),Position=UDim2.new(0.5,-19,0.5,-19),
+			BackgroundTransparency=1,Image=logoAsset,ZIndex=404,Parent=logoBg})
+	else
+		newInst("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+			Text=title:sub(1,3):upper(),TextColor3=C.purple,
+			Font=Enum.Font.GothamBlack,TextSize=18,ZIndex=404,Parent=logoBg})
+	end
 
 	newInst("TextLabel",{Size=UDim2.new(1,-32,0,22),Position=UDim2.new(0,16,0,46),
 		BackgroundTransparency=1,Text="Verify Your Key",TextColor3=C.textMain,
@@ -342,13 +418,15 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		BackgroundTransparency=1,Text="Redeem Key",TextColor3=Color3.fromRGB(255,255,255),
 		Font=Enum.Font.GothamBold,TextSize=12,ZIndex=403,Parent=redeemBtn})
 
+	-- Shop banner with Discord icon (same technique Rayfield uses for notification icons)
 	local shopBanner=newInst("Frame",{Size=UDim2.new(1,-32,0,42),Position=UDim2.new(0,16,0,246),
 		BackgroundColor3=Color3.fromRGB(14,8,28),BorderSizePixel=0,ZIndex=402,Parent=card})
 	corner(10,shopBanner);stroke(Color3.fromRGB(55,32,90),1,shopBanner)
 	local shopLogoBg=newInst("Frame",{Size=UDim2.new(0,28,0,28),Position=UDim2.new(0,8,0.5,-14),
 		BackgroundColor3=Color3.fromRGB(24,14,48),BorderSizePixel=0,ZIndex=403,Parent=shopBanner});corner(6,shopLogoBg)
-	newInst("ImageLabel",{Size=UDim2.new(0,16,0,16),Position=UDim2.new(0.5,-8,0.5,-8),
-		BackgroundTransparency=1,Image=Icons.Buy,ImageColor3=C.yellow,ZIndex=404,Parent=shopLogoBg})
+	-- Discord logo icon (same rbxassetid used in Icons table above — this IS how the key system gets discord logo)
+	newInst("ImageLabel",{Size=UDim2.new(0,18,0,18),Position=UDim2.new(0.5,-9,0.5,-9),
+		BackgroundTransparency=1,Image=Icons.Discord,ImageColor3=Color3.fromRGB(88,101,242),ZIndex=404,Parent=shopLogoBg})
 	newInst("TextLabel",{Size=UDim2.new(1,-110,0,14),Position=UDim2.new(0,44,0,6),
 		BackgroundTransparency=1,Text="Get Lifetime-Key NOW!!",TextColor3=C.textMain,
 		Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=403,Parent=shopBanner})
@@ -404,7 +482,7 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 				tw(inputStroke,{Color=C.green},0.2)
 				redeemLbl.Text="✓ Accepted"
 				if saveKey then
-					ensureFolder(CONFIG_FOLDER)
+					ensureFolderSafe(CONFIG_FOLDER)
 					pcall(function() writefile(keyFile,entered) end)
 				end
 				task.delay(0.9,function() dismissCard(onSuccess) end)
@@ -568,25 +646,37 @@ end
 
 -- ── Loading screen ────────────────────────────────────────────────────────────
 local function showLoadingScreen(screen,cfg)
-	local loadTitle=cfg.LoadingTitle or cfg.Name or "Velora UI"
-	local loadSubtitle=cfg.LoadingSubtitle or "by Naru"
-	local logoId="rbxassetid://"..(tostring(cfg.Logo or "90288986008784"))
+	local loadTitle    = cfg.LoadingTitle    or cfg.Name or "Velora UI"
+	local loadSubtitle = cfg.LoadingSubtitle or "by Naru"
+
 	local overlay=newInst("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=Color3.fromRGB(6,6,14),
 		BorderSizePixel=0,ZIndex=200,Parent=screen})
 	local inner=newInst("Frame",{Size=UDim2.new(0,320,0,160),Position=UDim2.new(0.5,-160,0.6,-80),
 		BackgroundColor3=Color3.fromRGB(12,10,24),BackgroundTransparency=1,
 		BorderSizePixel=0,ZIndex=201,Parent=overlay});corner(18,inner);stroke(C.border,1.2,inner)
+
+	-- Logo frame — uses downloaded PNG if available, otherwise Lightning symbol
 	local logoFrame=newInst("Frame",{Size=UDim2.new(0,64,0,64),Position=UDim2.new(0,28,0.5,-32),
 		BackgroundColor3=Color3.fromRGB(20,14,38),BorderSizePixel=0,ZIndex=202,Parent=inner})
 	corner(14,logoFrame);stroke(C.border,1,logoFrame)
-	newInst("ImageLabel",{Size=UDim2.new(0,48,0,48),Position=UDim2.new(0.5,-24,0.5,-24),
-		BackgroundTransparency=1,Image=logoId,ZIndex=203,Parent=logoFrame})
+
+	local logoAsset = getVeloraAsset("Logo")
+	if logoAsset ~= "" then
+		newInst("ImageLabel",{Size=UDim2.new(0,44,0,44),Position=UDim2.new(0.5,-22,0.5,-22),
+			BackgroundTransparency=1,Image=logoAsset,ZIndex=203,Parent=logoFrame})
+	else
+		-- Fallback: lightning bolt text symbol
+		newInst("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+			Text="⚡",TextColor3=C.purple,Font=Enum.Font.GothamBold,TextSize=28,ZIndex=203,Parent=logoFrame})
+	end
+
 	newInst("TextLabel",{Size=UDim2.new(1,-126,0,28),Position=UDim2.new(0,108,0,32),
 		BackgroundTransparency=1,Text=loadTitle,TextColor3=C.purple,Font=Enum.Font.GothamBold,
 		TextSize=20,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=202,Parent=inner})
 	newInst("TextLabel",{Size=UDim2.new(1,-126,0,18),Position=UDim2.new(0,108,0,62),
 		BackgroundTransparency=1,Text=loadSubtitle,TextColor3=C.textDim,Font=Enum.Font.Gotham,
 		TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=202,Parent=inner})
+
 	local barTrack=newInst("Frame",{Size=UDim2.new(1,-56,0,4),Position=UDim2.new(0,28,1,-24),
 		BackgroundColor3=Color3.fromRGB(26,20,46),BorderSizePixel=0,ZIndex=202,Parent=inner});corner(99,barTrack)
 	local barFill=newInst("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=C.purple,
@@ -594,6 +684,7 @@ local function showLoadingScreen(screen,cfg)
 	local loadLbl=newInst("TextLabel",{Size=UDim2.new(1,-56,0,14),Position=UDim2.new(0,28,1,-44),
 		BackgroundTransparency=1,Text="Loading...",TextColor3=C.textDim,Font=Enum.Font.Gotham,
 		TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=202,Parent=inner})
+
 	spring(inner,{BackgroundTransparency=0,Position=UDim2.new(0.5,-160,0.5,-80)},0.5)
 	task.spawn(function()
 		local steps={"Initializing...","Loading UI...","Applying theme...","Ready!"}
@@ -613,14 +704,12 @@ end
 -- ────────────────────────────────────────────────────────────────────────────
 -- ── CreateWindow ──────────────────────────────────────────────────────────────
 -- ────────────────────────────────────────────────────────────────────────────
--- Layout: 
+-- Layout (restored to original horizontal tab design):
 --   win (440 wide x 490 tall)
---     topbar (440 x 44)
---     sidebar (72 wide, fills height below topbar)  ← NEW vertical tab sidebar
---     contentArea (fills remaining right side)
---       searchBar (optional, slides in)
---       bodyFrame (scrolling)
---     dragHandle (bottom, mobile)                   ← NEW
+--     topbar  (440 x 44)
+--     tabBar  (440 x 38)  ← horizontal tab strip
+--     bodyFrame (scrolling, fills remaining height)
+--     dragHandle (bottom 18px, mobile)
 -- ────────────────────────────────────────────────────────────────────────────
 
 function VeloraUI:CreateWindow(cfg)
@@ -641,12 +730,12 @@ function VeloraUI:CreateWindow(cfg)
 		toggleKey=cfg.ToggleKey or Enum.KeyCode.RightBracket
 	end
 
-	local configSaving=cfg.ConfigurationSaving or {}
-	local configEnabled=configSaving.Enabled==true
-	local configFolder=configSaving.FolderName or CONFIG_FOLDER
-	local configFileName=configSaving.FileName or tostring(game.PlaceId)
-	CONFIG_FILE=configFolder.."/"..configFileName..".json"
-	if configEnabled then ensureFolder(configFolder) end
+	local configSaving   = cfg.ConfigurationSaving or {}
+	local configEnabled  = configSaving.Enabled==true
+	local configFolder   = configSaving.FolderName or CONFIG_FOLDER
+	local configFileName = configSaving.FileName or tostring(game.PlaceId)
+	CONFIG_FILE = configFolder.."/"..configFileName..".json"
+	if configEnabled then ensureFolderSafe(configFolder) end
 
 	if me.PlayerGui:FindFirstChild("VeloraUI") then me.PlayerGui.VeloraUI:Destroy() end
 
@@ -658,14 +747,14 @@ function VeloraUI:CreateWindow(cfg)
 		if not screen.Parent then _G.__VeloraUI_Running=nil;notifScreen=nil end
 	end)
 
-	-- dimensions
-	local WIN_W = 440
-	local WIN_H = 490
+	-- ── dimensions (restored to original) ─────────────────────────────────────
+	local WIN_W    = 440
+	local WIN_H    = 490
 	local TOPBAR_H = 44
-	local SIDEBAR_W = 72
-	local DRAG_H = 18   -- bottom drag handle height
-	local BODY_TOP = TOPBAR_H  -- body starts right after topbar
-	local BODY_H = WIN_H - TOPBAR_H - DRAG_H
+	local TABBAR_H = 38
+	local DRAG_H   = 18
+	local BODY_TOP = TOPBAR_H + TABBAR_H  -- 82
+	local BODY_H   = WIN_H - BODY_TOP - DRAG_H  -- 390
 
 	-- glow
 	local glowFrame=newInst("Frame",{Size=UDim2.new(0,WIN_W+18,0,WIN_H+20),
@@ -680,10 +769,9 @@ function VeloraUI:CreateWindow(cfg)
 		ClipsDescendants=true,BackgroundTransparency=1,Visible=false,Parent=screen})
 	corner(16,win);stroke(Color3.fromRGB(100,50,220),1.5,win)
 
-	-- topbar
+	-- ── topbar ────────────────────────────────────────────────────────────────
 	local topbar=newInst("Frame",{Size=UDim2.new(1,0,0,TOPBAR_H),BackgroundColor3=C.bgDeep,
 		BorderSizePixel=0,ZIndex=2,Parent=win});corner(16,topbar)
-	-- cover bottom-left/right rounded corners of topbar
 	newInst("Frame",{Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,0,1,-16),
 		BackgroundColor3=C.bgDeep,BorderSizePixel=0,ZIndex=2,Parent=topbar})
 
@@ -695,9 +783,22 @@ function VeloraUI:CreateWindow(cfg)
 	local dotGreen=newInst("TextButton",{Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,50,0.5,-6),
 		BackgroundColor3=Color3.fromRGB(40,202,65),BorderSizePixel=0,Text="",ZIndex=4,Parent=topbar});corner(99,dotGreen)
 
-	newInst("TextLabel",{Size=UDim2.new(1,-140,1,0),Position=UDim2.new(0,70,0,0),
-		BackgroundTransparency=1,Text=title,TextColor3=C.purple,TextScaled=true,
-		Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=3,Parent=topbar})
+	-- topbar logo icon (Velora PNG or fallback ⚡)
+	local topbarLogoAsset = getVeloraAsset("Topbar")
+	if topbarLogoAsset ~= "" then
+		local topLogoFrame=newInst("Frame",{Size=UDim2.new(0,24,0,24),Position=UDim2.new(0,70,0.5,-12),
+			BackgroundColor3=Color3.fromRGB(20,14,38),BorderSizePixel=0,ZIndex=3,Parent=topbar})
+		corner(6,topLogoFrame)
+		newInst("ImageLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+			Image=topbarLogoAsset,ZIndex=4,Parent=topLogoFrame})
+		newInst("TextLabel",{Size=UDim2.new(1,-108,1,0),Position=UDim2.new(0,100,0,0),
+			BackgroundTransparency=1,Text=title,TextColor3=C.purple,TextScaled=true,
+			Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=3,Parent=topbar})
+	else
+		newInst("TextLabel",{Size=UDim2.new(1,-140,1,0),Position=UDim2.new(0,70,0,0),
+			BackgroundTransparency=1,Text=title,TextColor3=C.purple,TextScaled=true,
+			Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=3,Parent=topbar})
+	end
 
 	-- search toggle
 	local searchToggleBtn=newInst("TextButton",{Size=UDim2.new(0,28,0,28),
@@ -756,63 +857,39 @@ function VeloraUI:CreateWindow(cfg)
 		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end
 	end)
 
-	-- ── SIDEBAR (vertical tab strip) ──────────────────────────────────────────
-	local sidebar=newInst("Frame",{
-		Size=UDim2.new(0,SIDEBAR_W,1,-TOPBAR_H-DRAG_H),
+	-- ── HORIZONTAL TAB BAR ────────────────────────────────────────────────────
+	local tabBar=newInst("Frame",{Size=UDim2.new(1,0,0,TABBAR_H),
 		Position=UDim2.new(0,0,0,TOPBAR_H),
-		BackgroundColor3=C.sidebar,BorderSizePixel=0,ZIndex=2,
-		ClipsDescendants=true,Parent=win})
-	-- right border divider
-	newInst("Frame",{Size=UDim2.new(0,1,1,0),Position=UDim2.new(1,-1,0,0),
-		BackgroundColor3=Color3.fromRGB(60,30,110),BorderSizePixel=0,ZIndex=3,Parent=sidebar})
-	-- sidebar scroll for many tabs
-	local sidebarScroll=newInst("ScrollingFrame",{
-		Size=UDim2.new(1,0,1,0),
-		BackgroundTransparency=1,BorderSizePixel=0,
-		ScrollBarThickness=0,CanvasSize=UDim2.new(0,0,0,0),
-		ZIndex=3,Parent=sidebar})
-	padding(8,8,0,0,sidebarScroll)
-	local sidebarLayout=listLayout(sidebarScroll,4)
-	sidebarLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-		sidebarScroll.CanvasSize=UDim2.new(0,0,0,sidebarLayout.AbsoluteContentSize.Y+16)
-	end)
+		BackgroundColor3=C.bgDeep,BorderSizePixel=0,ZIndex=2,Parent=win})
+	stroke(Color3.fromRGB(60,30,110),1,tabBar)
+	listLayout(tabBar,0,Enum.FillDirection.Horizontal)
 
-	-- ── CONTENT AREA (right of sidebar) ───────────────────────────────────────
-	local contentArea=newInst("Frame",{
-		Size=UDim2.new(1,-SIDEBAR_W,1,-TOPBAR_H-DRAG_H),
-		Position=UDim2.new(0,SIDEBAR_W,0,TOPBAR_H),
-		BackgroundTransparency=1,BorderSizePixel=0,ZIndex=2,
-		ClipsDescendants=true,Parent=win})
-
-	-- ── SEARCH BAR (slides down inside content area) ──────────────────────────
+	-- ── SEARCH BAR (slides down inside content area, below tabBar) ────────────
 	local searchOpen=false
 
 	local searchBar=newInst("Frame",{Size=UDim2.new(1,-16,0,36),
-		Position=UDim2.new(0.5,0,0,4),AnchorPoint=Vector2.new(0.5,0),
+		Position=UDim2.new(0.5,0,0,BODY_TOP+4),AnchorPoint=Vector2.new(0.5,0),
 		BackgroundColor3=Color3.fromRGB(13,9,26),BackgroundTransparency=1,
-		BorderSizePixel=0,ZIndex=10,Visible=false,Parent=contentArea});corner(10,searchBar)
+		BorderSizePixel=0,ZIndex=10,Visible=false,Parent=win});corner(10,searchBar)
 	local searchBarStroke=stroke(C.border,1.2,searchBar);searchBarStroke.Transparency=1
-
 	local searchGlowFrame=newInst("Frame",{Size=UDim2.new(1,16,1,16),
 		Position=UDim2.new(0.5,0,0.5,0),AnchorPoint=Vector2.new(0.5,0.5),
 		BackgroundColor3=C.purple,BackgroundTransparency=1,
 		BorderSizePixel=0,ZIndex=9,Parent=searchBar});corner(14,searchGlowFrame)
-
 	newInst("ImageLabel",{Size=UDim2.new(0,15,0,15),
 		Position=UDim2.new(0,10,0.5,-7),BackgroundTransparency=1,
 		Image=Icons.Search,ImageColor3=C.purple,ZIndex=11,Parent=searchBar})
-
 	local searchBox=newInst("TextBox",{Size=UDim2.new(1,-36,1,-8),
 		Position=UDim2.new(0,30,0,4),BackgroundTransparency=1,Text="",
 		PlaceholderText="Search elements...",PlaceholderColor3=C.textDim,
 		TextColor3=C.textMain,Font=Enum.Font.Gotham,TextSize=12,
 		TextXAlignment=Enum.TextXAlignment.Left,ClearTextOnFocus=false,ZIndex=11,Parent=searchBar})
 
-	-- body scrollframe inside content area
-	local bodyFrame=newInst("ScrollingFrame",{Size=UDim2.new(1,0,1,0),
-		Position=UDim2.new(0,0,0,0),BackgroundTransparency=1,BorderSizePixel=0,
+	-- body scrollframe
+	local bodyFrame=newInst("ScrollingFrame",{Size=UDim2.new(1,0,1,-BODY_TOP-DRAG_H),
+		Position=UDim2.new(0,0,0,BODY_TOP),BackgroundTransparency=1,BorderSizePixel=0,
 		ScrollBarThickness=2,ScrollBarImageColor3=C.border,
-		CanvasSize=UDim2.new(0,0,0,0),ZIndex=2,ClipsDescendants=true,Parent=contentArea})
+		CanvasSize=UDim2.new(0,0,0,0),ZIndex=2,ClipsDescendants=true,Parent=win})
 	padding(8,8,8,8,bodyFrame)
 	local bodyLayout=listLayout(bodyFrame,6)
 	bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -835,8 +912,8 @@ function VeloraUI:CreateWindow(cfg)
 		if searchOpen then return end
 		searchOpen=true;searchBar.Visible=true
 		searchBar.BackgroundTransparency=1;searchBarStroke.Transparency=1;searchGlowFrame.BackgroundTransparency=1
-		-- shift body down
-		bodyFrame.Size=UDim2.new(1,0,1,-46);bodyFrame.Position=UDim2.new(0,0,0,46)
+		bodyFrame.Size=UDim2.new(1,0,1,-BODY_TOP-DRAG_H-46)
+		bodyFrame.Position=UDim2.new(0,0,0,BODY_TOP+46)
 		spring(searchBar,{BackgroundTransparency=0},0.35)
 		tw(searchBarStroke,{Transparency=0},0.25)
 		tw(searchGlowFrame,{BackgroundTransparency=0.9},0.3)
@@ -850,7 +927,8 @@ function VeloraUI:CreateWindow(cfg)
 		tw(searchBarStroke,{Transparency=1},0.2)
 		tw(searchGlowFrame,{BackgroundTransparency=1},0.2)
 		task.delay(0.22,function() searchBar.Visible=false end)
-		bodyFrame.Size=UDim2.new(1,0,1,0);bodyFrame.Position=UDim2.new(0,0,0,0)
+		bodyFrame.Size=UDim2.new(1,0,1,-BODY_TOP-DRAG_H)
+		bodyFrame.Position=UDim2.new(0,0,0,BODY_TOP)
 	end
 
 	searchToggleBtn.MouseButton1Click:Connect(function()
@@ -868,21 +946,18 @@ function VeloraUI:CreateWindow(cfg)
 		tw(searchGlowFrame,{BackgroundTransparency=0.9},0.2)
 	end)
 
-	-- ── DRAG HANDLE (bottom bar for mobile) ───────────────────────────────────
+	-- ── DRAG HANDLE (bottom bar, mobile-friendly) ─────────────────────────────
 	local dragHandle=newInst("Frame",{
 		Size=UDim2.new(1,0,0,DRAG_H),
 		Position=UDim2.new(0,0,1,-DRAG_H),
 		BackgroundColor3=C.bgDeep,BorderSizePixel=0,ZIndex=3,Parent=win})
-	-- pill indicator
 	local dragPill=newInst("Frame",{Size=UDim2.new(0,40,0,4),
 		Position=UDim2.new(0.5,-20,0.5,-2),
 		BackgroundColor3=Color3.fromRGB(80,50,140),BorderSizePixel=0,ZIndex=4,Parent=dragHandle})
 	corner(99,dragPill)
-	-- a thin top border line
 	newInst("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0,0),
 		BackgroundColor3=Color3.fromRGB(60,30,110),BorderSizePixel=0,ZIndex=4,Parent=dragHandle})
 
-	-- drag handle drag logic (separate from topbar drag)
 	local hDragging,hDragStart,hStartPos=false,nil,nil
 	dragHandle.InputBegan:Connect(function(i)
 		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
@@ -893,9 +968,7 @@ function VeloraUI:CreateWindow(cfg)
 	input.InputChanged:Connect(function(i)
 		if hDragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
 			local d=i.Position-hDragStart
-			local nx=hStartPos.X.Offset+d.X
-			local ny=hStartPos.Y.Offset+d.Y
-			win.Position=UDim2.new(hStartPos.X.Scale,nx,hStartPos.Y.Scale,ny)
+			win.Position=UDim2.new(hStartPos.X.Scale,hStartPos.X.Offset+d.X,hStartPos.Y.Scale,hStartPos.Y.Offset+d.Y)
 			glowFrame.Position=UDim2.new(win.Position.X.Scale,win.Position.X.Offset-9,win.Position.Y.Scale,win.Position.Y.Offset-10)
 		end
 	end)
@@ -906,15 +979,15 @@ function VeloraUI:CreateWindow(cfg)
 		end
 	end)
 
-	-- ── Minimize (yellow dot) — FIX: ClipsDescendants handles overlap ────────
+	-- ── Minimize (yellow dot) ─────────────────────────────────────────────────
 	local minimized=false
 	dotYellow.MouseButton1Click:Connect(function()
 		minimized=not minimized
 		if minimized then
 			if searchOpen then closeSearch() end
 			task.delay(0.05,function()
-				sidebar.Visible=false
-				contentArea.Visible=false
+				tabBar.Visible=false
+				bodyFrame.Visible=false
 				dragHandle.Visible=false
 			end)
 			tw(win,{Size=UDim2.new(0,WIN_W,0,TOPBAR_H)},0.3,Enum.EasingStyle.Quad)
@@ -923,14 +996,14 @@ function VeloraUI:CreateWindow(cfg)
 			tw(win,{Size=UDim2.new(0,WIN_W,0,WIN_H)},0.3,Enum.EasingStyle.Quad)
 			tw(glowFrame,{Size=UDim2.new(0,WIN_W+18,0,WIN_H+20)},0.3)
 			task.delay(0.28,function()
-				sidebar.Visible=true
-				contentArea.Visible=true
+				tabBar.Visible=true
+				bodyFrame.Visible=true
 				dragHandle.Visible=true
 			end)
 		end
 	end)
 
-	-- close with confirm
+	-- ── Close with confirm (red dot) — SPAM FIXED via dialogOpen guard ─────────
 	dotRed.MouseButton1Click:Connect(function()
 		buildConfirmDialog(screen,function()
 			tw(win,{Size=UDim2.new(0,300,0,0),BackgroundTransparency=1},0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.In)
@@ -962,7 +1035,6 @@ function VeloraUI:CreateWindow(cfg)
 		Font=Enum.Font.GothamBold,TextSize=12,
 		TextXAlignment=Enum.TextXAlignment.Center,ZIndex=501,Parent=showPrompt})
 
-	-- ── FIX: hide/show use Visible toggle instead of tweening child transparencies
 	local function hideUI()
 		if hidden then return end
 		hidden=true
@@ -971,7 +1043,6 @@ function VeloraUI:CreateWindow(cfg)
 		task.delay(0.28,function()
 			win.Visible=false
 			glowFrame.Visible=false
-			-- show pill
 			showPrompt.Visible=true
 			showPrompt.Size=UDim2.new(0,0,0,0)
 			showPrompt.BackgroundTransparency=1
@@ -982,10 +1053,8 @@ function VeloraUI:CreateWindow(cfg)
 	local function showUI()
 		if not hidden then return end
 		hidden=false
-		-- hide prompt
 		tw(showPrompt,{Size=UDim2.new(0,0,0,0),BackgroundTransparency=1},0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.In)
 		task.delay(0.22,function() showPrompt.Visible=false end)
-		-- restore window — no child transparency tweening needed
 		win.Visible=true
 		glowFrame.Visible=true
 		win.BackgroundTransparency=1
@@ -996,14 +1065,9 @@ function VeloraUI:CreateWindow(cfg)
 	dotGreen.MouseButton1Click:Connect(function() hideUI() end)
 	dotGreen.MouseEnter:Connect(function() tw(dotGreen,{BackgroundTransparency=0.3},0.1) end)
 	dotGreen.MouseLeave:Connect(function() tw(dotGreen,{BackgroundTransparency=0},0.1) end)
-
 	showPrompt.MouseButton1Click:Connect(function() showUI() end)
-	showPrompt.MouseEnter:Connect(function()
-		tw(showPrompt,{BackgroundColor3=Color3.fromRGB(32,22,56)},0.12)
-	end)
-	showPrompt.MouseLeave:Connect(function()
-		tw(showPrompt,{BackgroundColor3=Color3.fromRGB(22,16,40)},0.12)
-	end)
+	showPrompt.MouseEnter:Connect(function() tw(showPrompt,{BackgroundColor3=Color3.fromRGB(32,22,56)},0.12) end)
+	showPrompt.MouseLeave:Connect(function() tw(showPrompt,{BackgroundColor3=Color3.fromRGB(22,16,40)},0.12) end)
 
 	-- ── Reveal window ─────────────────────────────────────────────────────────
 	local function revealWindow()
@@ -1037,73 +1101,60 @@ function VeloraUI:CreateWindow(cfg)
 
 	-- ── CreateTab ─────────────────────────────────────────────────────────────
 	-- API: Window:CreateTab("Name", iconId)
-	-- iconId can be: number (asset id), string rbxassetid://, URL string, or nil
-	function winObj:CreateTab(tabName,iconId)
+	-- iconId: number (assetid), rbxassetid:// string, URL string, or nil
+	-- Icons are rendered in the tab button exactly like Rayfield renders tab images.
+	function winObj:CreateTab(tabName, iconId)
 		tabCount=tabCount+1
-		local iconUrl=resolveIcon(iconId)
+		local iconUrl = resolveIcon(iconId)
 
-		-- ── sidebar button
+		-- ── Tab button in horizontal tab bar ───────────────────────────────────
+		-- Width auto-fits: wider if there's an icon
+		local btnW = iconUrl and (tabName:len()*7+52) or (tabName:len()*7+24)
+		btnW = math.max(btnW, iconUrl and 90 or 70)
+
 		local tabBtn=newInst("TextButton",{
-			Size=UDim2.new(1,0,0,64),
-			BackgroundColor3=Color3.fromRGB(14,10,28),
-			BorderSizePixel=0,Text="",ZIndex=4,Parent=sidebarScroll})
-		corner(10,tabBtn)
+			Size=UDim2.new(0,btnW,1,0),
+			BackgroundColor3=C.bgDeep,BorderSizePixel=0,Text="",ZIndex=3,Parent=tabBar})
 
-		-- active indicator bar (left edge)
-		local activeBar=newInst("Frame",{Size=UDim2.new(0,3,0.6,0),
-			Position=UDim2.new(0,0,0.2,0),
-			BackgroundColor3=C.purple,BackgroundTransparency=1,
-			BorderSizePixel=0,ZIndex=5,Parent=tabBtn})
-		corner(4,activeBar)
-
-		-- icon
+		-- icon image (if provided) — same technique as Rayfield Tab icons
 		local tabIcon=nil
 		if iconUrl then
-			tabIcon=newInst("ImageLabel",{Size=UDim2.new(0,26,0,26),
-				Position=UDim2.new(0.5,-13,0,8),
+			tabIcon=newInst("ImageLabel",{Size=UDim2.new(0,14,0,14),
+				Position=UDim2.new(0,10,0.5,-7),
 				BackgroundTransparency=1,Image=iconUrl,
-				ImageColor3=C.textDim,ZIndex=5,Parent=tabBtn})
+				ImageColor3=C.textDim,ZIndex=4,Parent=tabBtn})
 		end
 
 		-- label
 		local tabLbl=newInst("TextLabel",{
-			Size=UDim2.new(1,-4,0,14),
-			Position=UDim2.new(0,2,1,-20),
-			BackgroundTransparency=1,
-			Text=tabName,TextColor3=C.textDim,
-			Font=Enum.Font.GothamBold,TextSize=9,
-			TextXAlignment=Enum.TextXAlignment.Center,
-			TextTruncate=Enum.TextTruncate.AtEnd,
-			ZIndex=5,Parent=tabBtn})
+			Size=iconUrl and UDim2.new(1,-30,1,0) or UDim2.new(1,0,1,0),
+			Position=iconUrl and UDim2.new(0,28,0,0) or UDim2.new(0,0,0,0),
+			BackgroundTransparency=1,Text=tabName,TextColor3=C.textDim,
+			Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=tabBtn})
 
-		-- if no icon, center label
-		if not iconUrl then
-			tabLbl.Size=UDim2.new(1,-4,1,0)
-			tabLbl.Position=UDim2.new(0,2,0,0)
-			tabLbl.TextSize=10
-		end
+		-- bottom underline indicator (same as doc2 / old design)
+		local underline=newInst("Frame",{Size=UDim2.new(1,0,0,2),Position=UDim2.new(0,0,1,-2),
+			BackgroundColor3=C.border,BorderSizePixel=0,BackgroundTransparency=1,ZIndex=4,Parent=tabBtn})
 
-		-- tab content container (inside bodyFrame)
+		-- tab content container in bodyFrame
 		local tabContainer=newInst("Frame",{Size=UDim2.new(1,0,0,10),
 			BackgroundTransparency=1,BorderSizePixel=0,Visible=false,ZIndex=2,
 			AutomaticSize=Enum.AutomaticSize.Y,ClipsDescendants=false,Parent=bodyFrame})
 		listLayout(tabContainer,6)
 
-		local entry={container=tabContainer,btn=tabBtn,bar=activeBar,icon=tabIcon,lbl=tabLbl}
+		local entry={container=tabContainer,btn=tabBtn,line=underline,icon=tabIcon,lbl=tabLbl}
 
 		local function activate()
 			if activeTab then
 				activeTab.container.Visible=false
-				tw(activeTab.btn,{BackgroundColor3=Color3.fromRGB(14,10,28)},0.15)
 				tw(activeTab.lbl,{TextColor3=C.textDim},0.15)
-				tw(activeTab.bar,{BackgroundTransparency=1},0.15)
+				tw(activeTab.line,{BackgroundTransparency=1},0.15)
 				if activeTab.icon then tw(activeTab.icon,{ImageColor3=C.textDim},0.15) end
 			end
 			activeTab=entry
 			tabContainer.Visible=true
-			tw(tabBtn,{BackgroundColor3=Color3.fromRGB(30,18,58)},0.15)
 			tw(tabLbl,{TextColor3=C.textMain},0.15)
-			tw(activeBar,{BackgroundTransparency=0},0.15)
+			tw(underline,{BackgroundTransparency=0},0.15)
 			if tabIcon then tw(tabIcon,{ImageColor3=C.purple},0.15) end
 			if searchOpen then closeSearch() end
 		end
@@ -1112,14 +1163,10 @@ function VeloraUI:CreateWindow(cfg)
 		tabBtn.MouseButton1Click:Connect(activate)
 
 		tabBtn.MouseEnter:Connect(function()
-			if activeTab~=entry then
-				tw(tabBtn,{BackgroundColor3=Color3.fromRGB(22,14,44)},0.1)
-			end
+			if activeTab~=entry then tw(tabBtn,{BackgroundColor3=Color3.fromRGB(16,12,32)},0.1) end
 		end)
 		tabBtn.MouseLeave:Connect(function()
-			if activeTab~=entry then
-				tw(tabBtn,{BackgroundColor3=Color3.fromRGB(14,10,28)},0.1)
-			end
+			if activeTab~=entry then tw(tabBtn,{BackgroundColor3=C.bgDeep},0.1) end
 		end)
 
 		local tabObj={}
@@ -1145,7 +1192,7 @@ function VeloraUI:CreateWindow(cfg)
 				TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,TextSize=10,ZIndex=4,Parent=wrap}) end
 		end
 
-		-- Toggle
+		-- ── Toggle ──────────────────────────────────────────────────────────────
 		function tabObj:CreateToggle(cfg2)
 			cfg2=cfg2 or {}
 			local val=cfg2.CurrentValue or false
@@ -1179,7 +1226,7 @@ function VeloraUI:CreateWindow(cfg)
 			local obj={};function obj:Set(v) setVal(v) end;function obj:Get() return val end;return obj
 		end
 
-		-- Button
+		-- ── Button ──────────────────────────────────────────────────────────────
 		function tabObj:CreateButton(cfg2)
 			cfg2=cfg2 or {}
 			local sendNotif=cfg2.SendNotification~=false
@@ -1207,7 +1254,7 @@ function VeloraUI:CreateWindow(cfg)
 			local obj={};function obj:Set(txt) btn2.Text=tostring(txt) end;return obj
 		end
 
-		-- Slider
+		-- ── Slider ──────────────────────────────────────────────────────────────
 		function tabObj:CreateSlider(cfg2)
 			cfg2=cfg2 or {}
 			local range=cfg2.Range or {0,100};local inc=cfg2.Increment or 1
@@ -1258,7 +1305,7 @@ function VeloraUI:CreateWindow(cfg)
 			local obj={};function obj:Set(v) setSlider(v) end;function obj:Get() return cur end;return obj
 		end
 
-		-- Dropdown
+		-- ── Dropdown ────────────────────────────────────────────────────────────
 		function tabObj:CreateDropdown(cfg2)
 			cfg2=cfg2 or {}
 			local options=cfg2.Options or {}
@@ -1274,8 +1321,8 @@ function VeloraUI:CreateWindow(cfg)
 				Text=cfg2.Name or "Dropdown",TextColor3=C.textMain,
 				TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,TextSize=12,ZIndex=4,Parent=topLine})
 			local function displayText()
-				if multiSel then if #selected==0 then return "None  v" end;return table.concat(selected,", ").."  v"
-				else return tostring(selected).."  v" end
+				if multiSel then if #selected==0 then return "None  ▾" end;return table.concat(selected,", ").."  ▾"
+				else return tostring(selected).."  ▾" end
 			end
 			local dropBtn=newInst("TextButton",{Size=UDim2.new(1,0,0,30),BackgroundColor3=Color3.fromRGB(26,14,46),
 				BorderSizePixel=0,Text=displayText(),TextColor3=C.textLight,
@@ -1307,9 +1354,9 @@ function VeloraUI:CreateWindow(cfg)
 							refreshColors();dropBtn.Text=displayText()
 							if cfg2.Flag then flags[cfg2.Flag]=selected end
 							if cfg2.Callback then cfg2.Callback(selected) end
-							if sendNotif then notify(cfg2.Name or "Dropdown","Selected: "..displayText():gsub("  v",""),C.purple) end
+							if sendNotif then notify(cfg2.Name or "Dropdown","Selected: "..displayText():gsub("  ▾",""),C.purple) end
 						else
-							selected=opt;dropBtn.Text=opt.."  v";open=false
+							selected=opt;dropBtn.Text=opt.."  ▾";open=false
 							tw(menuFrame,{Size=UDim2.new(1,0,0,0)},0.18,Enum.EasingStyle.Quad)
 							task.delay(0.2,function() menuFrame.Visible=false end)
 							if cfg2.Flag then flags[cfg2.Flag]=opt end
@@ -1328,7 +1375,7 @@ function VeloraUI:CreateWindow(cfg)
 				if open then
 					menuFrame.Visible=true;menuFrame.Size=UDim2.new(1,0,0,0)
 					spring(menuFrame,{Size=UDim2.new(1,0,0,#options*30)},0.3)
-					dropBtn.Text=displayText():gsub("v$","^")
+					dropBtn.Text=displayText():gsub("▾$","▴")
 				else
 					tw(menuFrame,{Size=UDim2.new(1,0,0,0)},0.18,Enum.EasingStyle.Quad)
 					task.delay(0.2,function() menuFrame.Visible=false end)
@@ -1354,7 +1401,7 @@ function VeloraUI:CreateWindow(cfg)
 			return obj
 		end
 
-		-- Input
+		-- ── Input ───────────────────────────────────────────────────────────────
 		function tabObj:CreateInput(cfg2)
 			cfg2=cfg2 or {}
 			local val=cfg2.CurrentValue or ""
@@ -1390,7 +1437,7 @@ function VeloraUI:CreateWindow(cfg)
 			return obj
 		end
 
-		-- Label
+		-- ── Label ───────────────────────────────────────────────────────────────
 		function tabObj:CreateLabel(txt,_icon,col)
 			col=col or C.textMain
 			local lbl=newInst("TextLabel",{Size=UDim2.new(1,0,0,22),BackgroundTransparency=1,
@@ -1403,7 +1450,7 @@ function VeloraUI:CreateWindow(cfg)
 			return obj
 		end
 
-		-- Paragraph
+		-- ── Paragraph ───────────────────────────────────────────────────────────
 		function tabObj:CreateParagraph(cfg2)
 			cfg2=cfg2 or {}
 			local row=makeRow(nil,true);padding(10,10,12,12,row);listLayout(row,4)
@@ -1419,7 +1466,7 @@ function VeloraUI:CreateWindow(cfg)
 			return obj
 		end
 
-		-- SectionLabel
+		-- ── SectionLabel ─────────────────────────────────────────────────────────
 		function tabObj:CreateSectionLabel(txt)
 			newInst("TextLabel",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1,
 				Text=txt,TextColor3=C.textDim,TextXAlignment=Enum.TextXAlignment.Left,
