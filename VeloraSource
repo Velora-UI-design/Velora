@@ -44,6 +44,7 @@ local C = {
 	red        = Color3.fromRGB(255,96,96),
 	yellow     = Color3.fromRGB(255,210,60),
 	inputBg    = Color3.fromRGB(22,14,42),
+	sidebar    = Color3.fromRGB(8,8,18),
 }
 
 local flags    = {}
@@ -80,6 +81,18 @@ local function tw(obj,props,dur,style,dir)
 end
 local function spring(obj,props,dur)
 	tween:Create(obj,TweenInfo.new(dur or 0.4,Enum.EasingStyle.Back,Enum.EasingDirection.Out),props):Play()
+end
+
+-- resolve icon string → proper rbxassetid string
+local function resolveIcon(iconId)
+	if not iconId then return nil end
+	if type(iconId)=="number" then return "rbxassetid://"..iconId end
+	local s=tostring(iconId)
+	if s:sub(1,13)=="rbxassetid://" then return s end
+	if s:sub(1,4)=="http" then return s end -- URL passthrough (ImageLabel supports it in some executors)
+	-- numeric string
+	if tonumber(s) then return "rbxassetid://"..s end
+	return s
 end
 
 -- ── Config save / load ────────────────────────────────────────────────────────
@@ -237,7 +250,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 
 	if type(validKeys)=="string" then validKeys={validKeys} end
 
-	-- check saved key
 	if saveKey then
 		ensureFolder(CONFIG_FOLDER)
 		local ok,saved=pcall(function() return readfile(keyFile) end)
@@ -256,7 +268,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		end
 	end
 
-	-- ── build UI ──────────────────────────────────────────────────────────────
 	local W,H = 420,316
 
 	local overlay=newInst("Frame",{Size=UDim2.new(1,0,1,0),
@@ -268,11 +279,9 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		BackgroundColor3=Color3.fromRGB(10,8,20),BackgroundTransparency=1,
 		BorderSizePixel=0,ZIndex=401,Parent=overlay});corner(18,card);stroke(C.border,1.5,card)
 
-	-- top accent line
 	newInst("Frame",{Size=UDim2.new(0.55,0,0,1),Position=UDim2.new(0.225,0,0,0),
 		BackgroundColor3=C.purple,BackgroundTransparency=0.5,BorderSizePixel=0,ZIndex=402,Parent=card})
 
-	-- logo circle (floats above card top)
 	local logoBg=newInst("Frame",{Size=UDim2.new(0,64,0,64),Position=UDim2.new(0.5,-32,0,-32),
 		BackgroundColor3=Color3.fromRGB(16,10,34),BorderSizePixel=0,ZIndex=403,Parent=card})
 	corner(99,logoBg);stroke(C.border,1.5,logoBg)
@@ -280,7 +289,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		Text=title:sub(1,3):upper(),TextColor3=C.purple,
 		Font=Enum.Font.GothamBlack,TextSize=18,ZIndex=404,Parent=logoBg})
 
-	-- header text
 	newInst("TextLabel",{Size=UDim2.new(1,-32,0,22),Position=UDim2.new(0,16,0,46),
 		BackgroundTransparency=1,Text="Verify Your Key",TextColor3=C.textMain,
 		Font=Enum.Font.GothamBold,TextSize=16,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=402,Parent=card})
@@ -289,7 +297,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		Font=Enum.Font.Gotham,TextSize=10,TextXAlignment=Enum.TextXAlignment.Center,
 		TextWrapped=true,ZIndex=402,Parent=card})
 
-	-- input
 	local inputRow=newInst("Frame",{Size=UDim2.new(1,-32,0,42),Position=UDim2.new(0,16,0,96),
 		BackgroundColor3=Color3.fromRGB(14,8,28),BorderSizePixel=0,ZIndex=402,Parent=card});corner(10,inputRow)
 	local inputStroke=stroke(C.border,1,inputRow)
@@ -303,7 +310,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 	keyBox.Focused:Connect(function() tw(inputStroke,{Color=C.purple,Thickness=1.5},0.2) end)
 	keyBox.FocusLost:Connect(function() tw(inputStroke,{Color=C.border,Thickness=1},0.2) end)
 
-	-- status
 	local statusRow=newInst("Frame",{Size=UDim2.new(1,-32,0,30),Position=UDim2.new(0,16,0,148),
 		BackgroundColor3=Color3.fromRGB(12,8,22),BorderSizePixel=0,ZIndex=402,Parent=card});corner(8,statusRow)
 	stroke(Color3.fromRGB(30,20,50),1,statusRow)
@@ -319,7 +325,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		statusLbl.Text=msg
 	end
 
-	-- Get Key button
 	local getKeyBtn=newInst("TextButton",{Size=UDim2.new(0.46,-8,0,44),Position=UDim2.new(0,16,0,190),
 		BackgroundColor3=Color3.fromRGB(18,12,34),BorderSizePixel=0,Text="",ZIndex=402,Parent=card})
 	corner(10,getKeyBtn);stroke(C.border,1,getKeyBtn)
@@ -329,7 +334,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		BackgroundTransparency=1,Text="Get Key",TextColor3=C.textDim,
 		Font=Enum.Font.GothamBold,TextSize=12,ZIndex=403,Parent=getKeyBtn})
 
-	-- Redeem button
 	local redeemBtn=newInst("TextButton",{Size=UDim2.new(0.54,-8,0,44),Position=UDim2.new(0.46,0,0,190),
 		BackgroundColor3=C.purple,BorderSizePixel=0,Text="",ZIndex=402,Parent=card});corner(10,redeemBtn)
 	newInst("ImageLabel",{Size=UDim2.new(0,16,0,16),Position=UDim2.new(0.5,-52,0.5,-8),
@@ -338,7 +342,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		BackgroundTransparency=1,Text="Redeem Key",TextColor3=Color3.fromRGB(255,255,255),
 		Font=Enum.Font.GothamBold,TextSize=12,ZIndex=403,Parent=redeemBtn})
 
-	-- Shop banner
 	local shopBanner=newInst("Frame",{Size=UDim2.new(1,-32,0,42),Position=UDim2.new(0,16,0,246),
 		BackgroundColor3=Color3.fromRGB(14,8,28),BorderSizePixel=0,ZIndex=402,Parent=card})
 	corner(10,shopBanner);stroke(Color3.fromRGB(55,32,90),1,shopBanner)
@@ -357,10 +360,8 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		Text="BUY",TextColor3=C.yellow,Font=Enum.Font.GothamBold,TextSize=10,ZIndex=403,Parent=shopBanner})
 	corner(6,buyBtn);stroke(Color3.fromRGB(60,35,100),1,buyBtn)
 
-	-- entrance anim
 	spring(card,{BackgroundTransparency=0,Position=UDim2.new(0.5,-W/2,0.5,-H/2)},0.5)
 
-	-- shake helper
 	local function shakeCard()
 		local orig=card.Position;local ox=orig.X.Offset
 		for _,off in ipairs({7,-7,5,-5,2,-2,0}) do
@@ -370,7 +371,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 		card.Position=orig
 	end
 
-	-- resolve keys (fetch live if GrabKeyFromSite)
 	local function resolveKeys()
 		local out={}
 		for _,k in ipairs(validKeys) do
@@ -432,7 +432,6 @@ local function showKeySystem(screen,keyCfg,onSuccess)
 	redeemBtn.MouseButton1Click:Connect(function() tryValidate(keyBox.Text) end)
 	keyBox.FocusLost:Connect(function(enter) if enter then tryValidate(keyBox.Text) end end)
 
-	-- hover states
 	getKeyBtn.MouseEnter:Connect(function() tw(getKeyBtn,{BackgroundColor3=Color3.fromRGB(26,18,46)},0.12) end)
 	getKeyBtn.MouseLeave:Connect(function() tw(getKeyBtn,{BackgroundColor3=Color3.fromRGB(18,12,34)},0.12) end)
 	redeemBtn.MouseEnter:Connect(function() tw(redeemBtn,{BackgroundColor3=Color3.fromRGB(140,80,220)},0.12) end)
@@ -457,7 +456,6 @@ local function buildProfilePanel(screen,win)
 		BorderSizePixel=0,ZIndex=50,Visible=false,Parent=win})
 	corner(12,panel);stroke(C.border,1.2,panel)
 
-	-- avatar
 	local avatarBg=newInst("Frame",{Size=UDim2.new(0,52,0,52),Position=UDim2.new(0,12,0,14),
 		BackgroundColor3=Color3.fromRGB(26,14,52),BorderSizePixel=0,ZIndex=52,Parent=panel})
 	corner(10,avatarBg);stroke(C.border,1.2,avatarBg)
@@ -470,7 +468,6 @@ local function buildProfilePanel(screen,win)
 		if ok and url then avatarImg.Image=url end
 	end)
 
-	-- name labels
 	newInst("TextLabel",{Size=UDim2.new(1,-76,0,14),Position=UDim2.new(0,72,0,14),
 		BackgroundTransparency=1,Text="Welcome back,",TextColor3=C.textDim,
 		TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,TextSize=10,ZIndex=52,Parent=panel})
@@ -482,11 +479,9 @@ local function buildProfilePanel(screen,win)
 		BackgroundTransparency=1,Text="@"..me.Name,TextColor3=C.purpleDim,
 		TextXAlignment=Enum.TextXAlignment.Left,Font=Enum.Font.Gotham,TextSize=10,ZIndex=52,Parent=panel})
 
-	-- divider
 	newInst("Frame",{Size=UDim2.new(1,-24,0,1),Position=UDim2.new(0,12,0,78),
 		BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=52,Parent=panel})
 
-	-- info rows
 	local function infoRow(label,value,yPos)
 		newInst("TextLabel",{Size=UDim2.new(0,80,0,22),Position=UDim2.new(0,12,0,yPos),
 			BackgroundTransparency=1,Text=label,TextColor3=C.textDim,
@@ -504,11 +499,9 @@ local function buildProfilePanel(screen,win)
 	infoRow("Device",isMob and "Mobile" or "PC",112)
 	local userIdLbl=infoRow("User ID",tostring(me.UserId),136)
 
-	-- divider 2
 	newInst("Frame",{Size=UDim2.new(1,-24,0,1),Position=UDim2.new(0,12,0,166),
 		BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=52,Parent=panel})
 
-	-- anonymous toggle
 	local anonRow=newInst("Frame",{Size=UDim2.new(1,-24,0,32),Position=UDim2.new(0,12,0,174),
 		BackgroundColor3=Color3.fromRGB(17,12,30),BorderSizePixel=0,ZIndex=52,Parent=panel});corner(8,anonRow)
 	newInst("TextLabel",{Size=UDim2.new(1,-50,1,0),Position=UDim2.new(0,10,0,0),
@@ -520,11 +513,9 @@ local function buildProfilePanel(screen,win)
 	local anonThumb=newInst("Frame",{Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,2,0.5,-7),
 		BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=54,Parent=anonTrack});corner(99,anonThumb)
 
-	-- divider 3
 	newInst("Frame",{Size=UDim2.new(1,-24,0,1),Position=UDim2.new(0,12,0,214),
 		BackgroundColor3=C.purpleFade,BorderSizePixel=0,ZIndex=52,Parent=panel})
 
-	-- live clock
 	local clockLbl=newInst("TextLabel",{Size=UDim2.new(1,0,0,28),Position=UDim2.new(0,0,0,222),
 		BackgroundTransparency=1,Text="",TextColor3=C.purple,
 		TextXAlignment=Enum.TextXAlignment.Center,Font=Enum.Font.GothamBold,TextSize=16,ZIndex=52,Parent=panel})
@@ -545,7 +536,6 @@ local function buildProfilePanel(screen,win)
 	end)
 	screen.Destroying:Connect(function() clockConn:Disconnect() end)
 
-	-- anon toggle logic
 	anonTrack.InputBegan:Connect(function(i)
 		if i.UserInputType~=Enum.UserInputType.MouseButton1 and i.UserInputType~=Enum.UserInputType.Touch then return end
 		anonymous=not anonymous
@@ -620,7 +610,19 @@ local function showLoadingScreen(screen,cfg)
 	end)
 end
 
+-- ────────────────────────────────────────────────────────────────────────────
 -- ── CreateWindow ──────────────────────────────────────────────────────────────
+-- ────────────────────────────────────────────────────────────────────────────
+-- Layout: 
+--   win (440 wide x 490 tall)
+--     topbar (440 x 44)
+--     sidebar (72 wide, fills height below topbar)  ← NEW vertical tab sidebar
+--     contentArea (fills remaining right side)
+--       searchBar (optional, slides in)
+--       bodyFrame (scrolling)
+--     dragHandle (bottom, mobile)                   ← NEW
+-- ────────────────────────────────────────────────────────────────────────────
+
 function VeloraUI:CreateWindow(cfg)
 	cfg=cfg or {}
 	local me=Players.LocalPlayer
@@ -629,7 +631,6 @@ function VeloraUI:CreateWindow(cfg)
 	local useKey=cfg.KeySystem==true
 	local keyCfg=cfg.KeySettings or {}
 
-	-- toggle key parsing
 	local toggleKey
 	if type(cfg.ToggleUIKeybind)=="string" then
 		local ok,kc=pcall(function() return Enum.KeyCode[cfg.ToggleUIKeybind:upper()] end)
@@ -640,7 +641,6 @@ function VeloraUI:CreateWindow(cfg)
 		toggleKey=cfg.ToggleKey or Enum.KeyCode.RightBracket
 	end
 
-	-- config saving setup
 	local configSaving=cfg.ConfigurationSaving or {}
 	local configEnabled=configSaving.Enabled==true
 	local configFolder=configSaving.FolderName or CONFIG_FOLDER
@@ -658,22 +658,32 @@ function VeloraUI:CreateWindow(cfg)
 		if not screen.Parent then _G.__VeloraUI_Running=nil;notifScreen=nil end
 	end)
 
-	-- glow frame
-	local glowFrame=newInst("Frame",{Size=UDim2.new(0,458,0,510),
-		Position=UDim2.new(0.5,-229,0.5,-255),
+	-- dimensions
+	local WIN_W = 440
+	local WIN_H = 490
+	local TOPBAR_H = 44
+	local SIDEBAR_W = 72
+	local DRAG_H = 18   -- bottom drag handle height
+	local BODY_TOP = TOPBAR_H  -- body starts right after topbar
+	local BODY_H = WIN_H - TOPBAR_H - DRAG_H
+
+	-- glow
+	local glowFrame=newInst("Frame",{Size=UDim2.new(0,WIN_W+18,0,WIN_H+20),
+		Position=UDim2.new(0.5,-(WIN_W/2+9),0.5,-(WIN_H/2+10)),
 		BackgroundColor3=Color3.fromRGB(100,50,220),BackgroundTransparency=0.88,
 		BorderSizePixel=0,ZIndex=0,Visible=false,Parent=screen});corner(20,glowFrame)
 
 	-- main window
-	local win=newInst("Frame",{Size=UDim2.new(0,370,0,420),
-		Position=UDim2.new(0.5,-220,0.5,-245),
+	local win=newInst("Frame",{Size=UDim2.new(0,WIN_W,0,WIN_H),
+		Position=UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2),
 		BackgroundColor3=C.bg,BorderSizePixel=0,ZIndex=1,
-		ClipsDescendants=false,BackgroundTransparency=1,Visible=false,Parent=screen})
+		ClipsDescendants=true,BackgroundTransparency=1,Visible=false,Parent=screen})
 	corner(16,win);stroke(Color3.fromRGB(100,50,220),1.5,win)
 
 	-- topbar
-	local topbar=newInst("Frame",{Size=UDim2.new(1,0,0,44),BackgroundColor3=C.bgDeep,
+	local topbar=newInst("Frame",{Size=UDim2.new(1,0,0,TOPBAR_H),BackgroundColor3=C.bgDeep,
 		BorderSizePixel=0,ZIndex=2,Parent=win});corner(16,topbar)
+	-- cover bottom-left/right rounded corners of topbar
 	newInst("Frame",{Size=UDim2.new(1,0,0,16),Position=UDim2.new(0,0,1,-16),
 		BackgroundColor3=C.bgDeep,BorderSizePixel=0,ZIndex=2,Parent=topbar})
 
@@ -685,12 +695,11 @@ function VeloraUI:CreateWindow(cfg)
 	local dotGreen=newInst("TextButton",{Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,50,0.5,-6),
 		BackgroundColor3=Color3.fromRGB(40,202,65),BorderSizePixel=0,Text="",ZIndex=4,Parent=topbar});corner(99,dotGreen)
 
-	-- title (centred, leaves room for right-side buttons)
 	newInst("TextLabel",{Size=UDim2.new(1,-140,1,0),Position=UDim2.new(0,70,0,0),
 		BackgroundTransparency=1,Text=title,TextColor3=C.purple,TextScaled=true,
 		Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center,ZIndex=3,Parent=topbar})
 
-	-- ── Search toggle button (magnifying glass) ────────────────────────────────
+	-- search toggle
 	local searchToggleBtn=newInst("TextButton",{Size=UDim2.new(0,28,0,28),
 		Position=UDim2.new(1,-84,0.5,-14),
 		BackgroundColor3=Color3.fromRGB(18,12,34),BorderSizePixel=0,
@@ -708,7 +717,7 @@ function VeloraUI:CreateWindow(cfg)
 		tw(searchIcon,{ImageColor3=C.textDim},0.12)
 	end)
 
-	-- ── Profile / user-info button ─────────────────────────────────────────────
+	-- profile button
 	local profBtn=newInst("TextButton",{Size=UDim2.new(0,30,0,30),
 		Position=UDim2.new(1,-44,0.5,-15),
 		BackgroundColor3=Color3.fromRGB(20,14,38),BorderSizePixel=0,
@@ -727,7 +736,7 @@ function VeloraUI:CreateWindow(cfg)
 		if profileCtrl.isOpen() then profileCtrl.close() else profileCtrl.open() end
 	end)
 
-	-- ── Drag (global listeners — no lag on fast movement) ─────────────────────
+	-- ── Drag (topbar drag) ────────────────────────────────────────────────────
 	local dragging,dragStart,startPos=false,nil,nil
 	topbar.InputBegan:Connect(function(i)
 		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
@@ -737,37 +746,59 @@ function VeloraUI:CreateWindow(cfg)
 	input.InputChanged:Connect(function(i)
 		if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
 			local d=i.Position-dragStart
-			win.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
-			glowFrame.Position=UDim2.new(win.Position.X.Scale,win.Position.X.Offset-9,win.Position.Y.Scale,win.Position.Y.Offset-9)
+			local nx=startPos.X.Offset+d.X
+			local ny=startPos.Y.Offset+d.Y
+			win.Position=UDim2.new(startPos.X.Scale,nx,startPos.Y.Scale,ny)
+			glowFrame.Position=UDim2.new(win.Position.X.Scale,win.Position.X.Offset-9,win.Position.Y.Scale,win.Position.Y.Offset-10)
 		end
 	end)
 	input.InputEnded:Connect(function(i)
 		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end
 	end)
 
-	-- tab bar
-	local tabBar=newInst("Frame",{Size=UDim2.new(1,0,0,38),Position=UDim2.new(0,0,0,44),
-		BackgroundColor3=C.bgDeep,BorderSizePixel=0,ZIndex=2,Parent=win})
-	stroke(Color3.fromRGB(100,50,220),1,tabBar)
-	listLayout(tabBar,0,Enum.FillDirection.Horizontal)
+	-- ── SIDEBAR (vertical tab strip) ──────────────────────────────────────────
+	local sidebar=newInst("Frame",{
+		Size=UDim2.new(0,SIDEBAR_W,1,-TOPBAR_H-DRAG_H),
+		Position=UDim2.new(0,0,0,TOPBAR_H),
+		BackgroundColor3=C.sidebar,BorderSizePixel=0,ZIndex=2,
+		ClipsDescendants=true,Parent=win})
+	-- right border divider
+	newInst("Frame",{Size=UDim2.new(0,1,1,0),Position=UDim2.new(1,-1,0,0),
+		BackgroundColor3=Color3.fromRGB(60,30,110),BorderSizePixel=0,ZIndex=3,Parent=sidebar})
+	-- sidebar scroll for many tabs
+	local sidebarScroll=newInst("ScrollingFrame",{
+		Size=UDim2.new(1,0,1,0),
+		BackgroundTransparency=1,BorderSizePixel=0,
+		ScrollBarThickness=0,CanvasSize=UDim2.new(0,0,0,0),
+		ZIndex=3,Parent=sidebar})
+	padding(8,8,0,0,sidebarScroll)
+	local sidebarLayout=listLayout(sidebarScroll,4)
+	sidebarLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		sidebarScroll.CanvasSize=UDim2.new(0,0,0,sidebarLayout.AbsoluteContentSize.Y+16)
+	end)
 
-	-- ── SEARCH BAR (slides down from topbar, glows on focus) ──────────────────
+	-- ── CONTENT AREA (right of sidebar) ───────────────────────────────────────
+	local contentArea=newInst("Frame",{
+		Size=UDim2.new(1,-SIDEBAR_W,1,-TOPBAR_H-DRAG_H),
+		Position=UDim2.new(0,SIDEBAR_W,0,TOPBAR_H),
+		BackgroundTransparency=1,BorderSizePixel=0,ZIndex=2,
+		ClipsDescendants=true,Parent=win})
+
+	-- ── SEARCH BAR (slides down inside content area) ──────────────────────────
 	local searchOpen=false
 
-	local searchBar=newInst("Frame",{Size=UDim2.new(1,-20,0,36),
-		Position=UDim2.new(0.5,0,0,44),AnchorPoint=Vector2.new(0.5,0),
+	local searchBar=newInst("Frame",{Size=UDim2.new(1,-16,0,36),
+		Position=UDim2.new(0.5,0,0,4),AnchorPoint=Vector2.new(0.5,0),
 		BackgroundColor3=Color3.fromRGB(13,9,26),BackgroundTransparency=1,
-		BorderSizePixel=0,ZIndex=10,Visible=false,Parent=win});corner(10,searchBar)
+		BorderSizePixel=0,ZIndex=10,Visible=false,Parent=contentArea});corner(10,searchBar)
 	local searchBarStroke=stroke(C.border,1.2,searchBar);searchBarStroke.Transparency=1
 
-	-- glow halo
 	local searchGlowFrame=newInst("Frame",{Size=UDim2.new(1,16,1,16),
 		Position=UDim2.new(0.5,0,0.5,0),AnchorPoint=Vector2.new(0.5,0.5),
 		BackgroundColor3=C.purple,BackgroundTransparency=1,
 		BorderSizePixel=0,ZIndex=9,Parent=searchBar});corner(14,searchGlowFrame)
 
-	-- search icon inside bar
-	local sbIcon=newInst("ImageLabel",{Size=UDim2.new(0,15,0,15),
+	newInst("ImageLabel",{Size=UDim2.new(0,15,0,15),
 		Position=UDim2.new(0,10,0.5,-7),BackgroundTransparency=1,
 		Image=Icons.Search,ImageColor3=C.purple,ZIndex=11,Parent=searchBar})
 
@@ -777,11 +808,11 @@ function VeloraUI:CreateWindow(cfg)
 		TextColor3=C.textMain,Font=Enum.Font.Gotham,TextSize=12,
 		TextXAlignment=Enum.TextXAlignment.Left,ClearTextOnFocus=false,ZIndex=11,Parent=searchBar})
 
-	-- body scrollframe
-	local bodyFrame=newInst("ScrollingFrame",{Size=UDim2.new(1,0,1,-82),
-		Position=UDim2.new(0,0,0,82),BackgroundTransparency=1,BorderSizePixel=0,
+	-- body scrollframe inside content area
+	local bodyFrame=newInst("ScrollingFrame",{Size=UDim2.new(1,0,1,0),
+		Position=UDim2.new(0,0,0,0),BackgroundTransparency=1,BorderSizePixel=0,
 		ScrollBarThickness=2,ScrollBarImageColor3=C.border,
-		CanvasSize=UDim2.new(0,0,0,0),ZIndex=2,ClipsDescendants=true,Parent=win})
+		CanvasSize=UDim2.new(0,0,0,0),ZIndex=2,ClipsDescendants=true,Parent=contentArea})
 	padding(8,8,8,8,bodyFrame)
 	local bodyLayout=listLayout(bodyFrame,6)
 	bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -804,8 +835,8 @@ function VeloraUI:CreateWindow(cfg)
 		if searchOpen then return end
 		searchOpen=true;searchBar.Visible=true
 		searchBar.BackgroundTransparency=1;searchBarStroke.Transparency=1;searchGlowFrame.BackgroundTransparency=1
-		-- shift body down to make room
-		bodyFrame.Size=UDim2.new(1,0,1,-124);bodyFrame.Position=UDim2.new(0,0,0,124)
+		-- shift body down
+		bodyFrame.Size=UDim2.new(1,0,1,-46);bodyFrame.Position=UDim2.new(0,0,0,46)
 		spring(searchBar,{BackgroundTransparency=0},0.35)
 		tw(searchBarStroke,{Transparency=0},0.25)
 		tw(searchGlowFrame,{BackgroundTransparency=0.9},0.3)
@@ -819,7 +850,7 @@ function VeloraUI:CreateWindow(cfg)
 		tw(searchBarStroke,{Transparency=1},0.2)
 		tw(searchGlowFrame,{BackgroundTransparency=1},0.2)
 		task.delay(0.22,function() searchBar.Visible=false end)
-		bodyFrame.Size=UDim2.new(1,0,1,-82);bodyFrame.Position=UDim2.new(0,0,0,82)
+		bodyFrame.Size=UDim2.new(1,0,1,0);bodyFrame.Position=UDim2.new(0,0,0,0)
 	end
 
 	searchToggleBtn.MouseButton1Click:Connect(function()
@@ -828,7 +859,6 @@ function VeloraUI:CreateWindow(cfg)
 	searchBox.FocusLost:Connect(function()
 		if searchBox.Text=="" and searchOpen then task.wait(0.15);closeSearch() end
 	end)
-	-- glow pulse while focused
 	searchBox.Focused:Connect(function()
 		tw(searchBarStroke,{Color=C.purple,Thickness=1.5},0.2)
 		tw(searchGlowFrame,{BackgroundTransparency=0.85},0.2)
@@ -838,23 +868,69 @@ function VeloraUI:CreateWindow(cfg)
 		tw(searchGlowFrame,{BackgroundTransparency=0.9},0.2)
 	end)
 
-	-- minimize (yellow dot)
+	-- ── DRAG HANDLE (bottom bar for mobile) ───────────────────────────────────
+	local dragHandle=newInst("Frame",{
+		Size=UDim2.new(1,0,0,DRAG_H),
+		Position=UDim2.new(0,0,1,-DRAG_H),
+		BackgroundColor3=C.bgDeep,BorderSizePixel=0,ZIndex=3,Parent=win})
+	-- pill indicator
+	local dragPill=newInst("Frame",{Size=UDim2.new(0,40,0,4),
+		Position=UDim2.new(0.5,-20,0.5,-2),
+		BackgroundColor3=Color3.fromRGB(80,50,140),BorderSizePixel=0,ZIndex=4,Parent=dragHandle})
+	corner(99,dragPill)
+	-- a thin top border line
+	newInst("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0,0),
+		BackgroundColor3=Color3.fromRGB(60,30,110),BorderSizePixel=0,ZIndex=4,Parent=dragHandle})
+
+	-- drag handle drag logic (separate from topbar drag)
+	local hDragging,hDragStart,hStartPos=false,nil,nil
+	dragHandle.InputBegan:Connect(function(i)
+		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+			hDragging=true;hDragStart=i.Position;hStartPos=win.Position
+			tw(dragPill,{BackgroundColor3=C.purple},0.1)
+		end
+	end)
+	input.InputChanged:Connect(function(i)
+		if hDragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+			local d=i.Position-hDragStart
+			local nx=hStartPos.X.Offset+d.X
+			local ny=hStartPos.Y.Offset+d.Y
+			win.Position=UDim2.new(hStartPos.X.Scale,nx,hStartPos.Y.Scale,ny)
+			glowFrame.Position=UDim2.new(win.Position.X.Scale,win.Position.X.Offset-9,win.Position.Y.Scale,win.Position.Y.Offset-10)
+		end
+	end)
+	input.InputEnded:Connect(function(i)
+		if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+			hDragging=false
+			tw(dragPill,{BackgroundColor3=Color3.fromRGB(80,50,140)},0.15)
+		end
+	end)
+
+	-- ── Minimize (yellow dot) — FIX: ClipsDescendants handles overlap ────────
 	local minimized=false
 	dotYellow.MouseButton1Click:Connect(function()
 		minimized=not minimized
 		if minimized then
 			if searchOpen then closeSearch() end
-			bodyFrame.Visible=false;tabBar.Visible=false
-			tw(win,{Size=UDim2.new(0,440,0,44)},0.3,Enum.EasingStyle.Quad)
-			tw(glowFrame,{Size=UDim2.new(0,458,0,60)},0.3)
+			task.delay(0.05,function()
+				sidebar.Visible=false
+				contentArea.Visible=false
+				dragHandle.Visible=false
+			end)
+			tw(win,{Size=UDim2.new(0,WIN_W,0,TOPBAR_H)},0.3,Enum.EasingStyle.Quad)
+			tw(glowFrame,{Size=UDim2.new(0,WIN_W+18,0,TOPBAR_H+20)},0.3)
 		else
-			bodyFrame.Visible=true;tabBar.Visible=true
-			spring(win,{Size=UDim2.new(0,440,0,490)},0.4)
-			spring(glowFrame,{Size=UDim2.new(0,458,0,510)},0.4)
+			tw(win,{Size=UDim2.new(0,WIN_W,0,WIN_H)},0.3,Enum.EasingStyle.Quad)
+			tw(glowFrame,{Size=UDim2.new(0,WIN_W+18,0,WIN_H+20)},0.3)
+			task.delay(0.28,function()
+				sidebar.Visible=true
+				contentArea.Visible=true
+				dragHandle.Visible=true
+			end)
 		end
 	end)
 
-	-- close with confirm (red dot)
+	-- close with confirm
 	dotRed.MouseButton1Click:Connect(function()
 		buildConfirmDialog(screen,function()
 			tw(win,{Size=UDim2.new(0,300,0,0),BackgroundTransparency=1},0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.In)
@@ -863,7 +939,6 @@ function VeloraUI:CreateWindow(cfg)
 		end)
 	end)
 
-	-- dot hover micro-animations
 	dotRed.MouseEnter:Connect(function() tw(dotRed,{BackgroundTransparency=0.3},0.1) end)
 	dotRed.MouseLeave:Connect(function() tw(dotRed,{BackgroundTransparency=0},0.1) end)
 	dotYellow.MouseEnter:Connect(function() tw(dotYellow,{BackgroundTransparency=0.3},0.1) end)
@@ -872,7 +947,7 @@ function VeloraUI:CreateWindow(cfg)
 	local isMobile=input.TouchEnabled and not input.KeyboardEnabled
 	local hidden=false
 
-	-- ── "Show Velora" pill prompt (appears when UI is hidden) ─────────────────
+	-- ── "Show Velora" pill prompt ──────────────────────────────────────────────
 	local showPrompt=newInst("TextButton",{
 		Size=UDim2.new(0,0,0,0),
 		Position=UDim2.new(0.5,0,0,20),
@@ -887,26 +962,16 @@ function VeloraUI:CreateWindow(cfg)
 		Font=Enum.Font.GothamBold,TextSize=12,
 		TextXAlignment=Enum.TextXAlignment.Center,ZIndex=501,Parent=showPrompt})
 
+	-- ── FIX: hide/show use Visible toggle instead of tweening child transparencies
 	local function hideUI()
 		if hidden then return end
 		hidden=true
-		tw(win,{BackgroundTransparency=1},0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.In)
-		tw(glowFrame,{BackgroundTransparency=1},0.25)
-		task.delay(0.1,function()
-			-- fade all children
-			for _,c in ipairs(win:GetDescendants()) do
-				if c:IsA("GuiObject") then tw(c,{BackgroundTransparency=1},0.2) end
-				if c:IsA("TextLabel") or c:IsA("TextButton") or c:IsA("TextBox") then
-					tw(c,{TextTransparency=1},0.2)
-				end
-				if c:IsA("ImageLabel") or c:IsA("ImageButton") then
-					tw(c,{ImageTransparency=1},0.2)
-				end
-			end
-		end)
-		task.delay(0.35,function()
-			win.Visible=false;glowFrame.Visible=false
-			-- show prompt pill
+		tw(win,{BackgroundTransparency=1},0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.In)
+		tw(glowFrame,{BackgroundTransparency=1},0.2)
+		task.delay(0.28,function()
+			win.Visible=false
+			glowFrame.Visible=false
+			-- show pill
 			showPrompt.Visible=true
 			showPrompt.Size=UDim2.new(0,0,0,0)
 			showPrompt.BackgroundTransparency=1
@@ -920,32 +985,18 @@ function VeloraUI:CreateWindow(cfg)
 		-- hide prompt
 		tw(showPrompt,{Size=UDim2.new(0,0,0,0),BackgroundTransparency=1},0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.In)
 		task.delay(0.22,function() showPrompt.Visible=false end)
-		-- restore window
-		win.Visible=true;glowFrame.Visible=true
-		win.BackgroundTransparency=1;glowFrame.BackgroundTransparency=0.88
+		-- restore window — no child transparency tweening needed
+		win.Visible=true
+		glowFrame.Visible=true
+		win.BackgroundTransparency=1
+		glowFrame.BackgroundTransparency=0.88
 		spring(win,{BackgroundTransparency=0},0.35)
-		-- restore all children transparencies
-		for _,c in ipairs(win:GetDescendants()) do
-			if c:IsA("GuiObject") and c.Name~="UICorner" and c.Name~="UIStroke"
-				and c.Name~="UIPadding" and c.Name~="UIListLayout" then
-				local origBT=c:GetAttribute("_origBT")
-				tw(c,{BackgroundTransparency=origBT or 0},0.3)
-			end
-			if c:IsA("TextLabel") or c:IsA("TextButton") or c:IsA("TextBox") then
-				tw(c,{TextTransparency=0},0.3)
-			end
-			if c:IsA("ImageLabel") or c:IsA("ImageButton") then
-				tw(c,{ImageTransparency=0},0.3)
-			end
-		end
 	end
 
-	-- white dot click → hide
 	dotGreen.MouseButton1Click:Connect(function() hideUI() end)
 	dotGreen.MouseEnter:Connect(function() tw(dotGreen,{BackgroundTransparency=0.3},0.1) end)
 	dotGreen.MouseLeave:Connect(function() tw(dotGreen,{BackgroundTransparency=0},0.1) end)
 
-	-- show prompt click → restore
 	showPrompt.MouseButton1Click:Connect(function() showUI() end)
 	showPrompt.MouseEnter:Connect(function()
 		tw(showPrompt,{BackgroundColor3=Color3.fromRGB(32,22,56)},0.12)
@@ -954,13 +1005,13 @@ function VeloraUI:CreateWindow(cfg)
 		tw(showPrompt,{BackgroundColor3=Color3.fromRGB(22,16,40)},0.12)
 	end)
 
-	-- reveals window after key check (or immediately if no key)
+	-- ── Reveal window ─────────────────────────────────────────────────────────
 	local function revealWindow()
 		win.Visible=true;glowFrame.Visible=true
 		showLoadingScreen(screen,cfg)
 		task.defer(function()
-			spring(win,{Size=UDim2.new(0,440,0,490),BackgroundTransparency=0,
-				Position=UDim2.new(0.5,-220,0.5,-245)},0.4)
+			spring(win,{Size=UDim2.new(0,WIN_W,0,WIN_H),BackgroundTransparency=0,
+				Position=UDim2.new(0.5,-WIN_W/2,0.5,-WIN_H/2)},0.4)
 		end)
 		if not isMobile then
 			task.delay(2.4,function()
@@ -975,7 +1026,6 @@ function VeloraUI:CreateWindow(cfg)
 		end
 	end
 
-	-- gate: show key system first, then reveal
 	if useKey then
 		showKeySystem(screen,keyCfg,revealWindow)
 	else
@@ -986,54 +1036,91 @@ function VeloraUI:CreateWindow(cfg)
 	local winObj={}
 
 	-- ── CreateTab ─────────────────────────────────────────────────────────────
+	-- API: Window:CreateTab("Name", iconId)
+	-- iconId can be: number (asset id), string rbxassetid://, URL string, or nil
 	function winObj:CreateTab(tabName,iconId)
 		tabCount=tabCount+1
+		local iconUrl=resolveIcon(iconId)
 
+		-- ── sidebar button
 		local tabBtn=newInst("TextButton",{
-			Size=UDim2.new(0,iconId and 110 or 100,1,0),
-			BackgroundColor3=C.bgDeep,BorderSizePixel=0,Text="",ZIndex=3,Parent=tabBar})
+			Size=UDim2.new(1,0,0,64),
+			BackgroundColor3=Color3.fromRGB(14,10,28),
+			BorderSizePixel=0,Text="",ZIndex=4,Parent=sidebarScroll})
+		corner(10,tabBtn)
 
-		if iconId and iconId~=0 then
-			newInst("ImageLabel",{Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,10,0.5,-7),
-				BackgroundTransparency=1,
-				Image=type(iconId)=="number" and ("rbxassetid://"..iconId) or tostring(iconId),
-				ImageColor3=C.textDim,ZIndex=4,Parent=tabBtn})
-			newInst("TextLabel",{Size=UDim2.new(1,-30,1,0),Position=UDim2.new(0,28,0,0),
-				BackgroundTransparency=1,Text=tabName,TextColor3=C.textDim,
-				Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=tabBtn})
-		else
-			newInst("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text=tabName,
-				TextColor3=C.textDim,Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=tabBtn})
+		-- active indicator bar (left edge)
+		local activeBar=newInst("Frame",{Size=UDim2.new(0,3,0.6,0),
+			Position=UDim2.new(0,0,0.2,0),
+			BackgroundColor3=C.purple,BackgroundTransparency=1,
+			BorderSizePixel=0,ZIndex=5,Parent=tabBtn})
+		corner(4,activeBar)
+
+		-- icon
+		local tabIcon=nil
+		if iconUrl then
+			tabIcon=newInst("ImageLabel",{Size=UDim2.new(0,26,0,26),
+				Position=UDim2.new(0.5,-13,0,8),
+				BackgroundTransparency=1,Image=iconUrl,
+				ImageColor3=C.textDim,ZIndex=5,Parent=tabBtn})
 		end
 
-		local underline=newInst("Frame",{Size=UDim2.new(1,0,0,2),Position=UDim2.new(0,0,1,-2),
-			BackgroundColor3=C.border,BorderSizePixel=0,BackgroundTransparency=1,ZIndex=4,Parent=tabBtn})
+		-- label
+		local tabLbl=newInst("TextLabel",{
+			Size=UDim2.new(1,-4,0,14),
+			Position=UDim2.new(0,2,1,-20),
+			BackgroundTransparency=1,
+			Text=tabName,TextColor3=C.textDim,
+			Font=Enum.Font.GothamBold,TextSize=9,
+			TextXAlignment=Enum.TextXAlignment.Center,
+			TextTruncate=Enum.TextTruncate.AtEnd,
+			ZIndex=5,Parent=tabBtn})
 
+		-- if no icon, center label
+		if not iconUrl then
+			tabLbl.Size=UDim2.new(1,-4,1,0)
+			tabLbl.Position=UDim2.new(0,2,0,0)
+			tabLbl.TextSize=10
+		end
+
+		-- tab content container (inside bodyFrame)
 		local tabContainer=newInst("Frame",{Size=UDim2.new(1,0,0,10),
 			BackgroundTransparency=1,BorderSizePixel=0,Visible=false,ZIndex=2,
 			AutomaticSize=Enum.AutomaticSize.Y,ClipsDescendants=false,Parent=bodyFrame})
 		listLayout(tabContainer,6)
 
-		local entry={container=tabContainer,btn=tabBtn,line=underline}
+		local entry={container=tabContainer,btn=tabBtn,bar=activeBar,icon=tabIcon,lbl=tabLbl}
+
 		local function activate()
 			if activeTab then
 				activeTab.container.Visible=false
-				for _,c in pairs(activeTab.btn:GetChildren()) do
-					if c:IsA("TextLabel") then tw(c,{TextColor3=C.textDim},0.15)
-					elseif c:IsA("ImageLabel") then tw(c,{ImageColor3=C.textDim},0.15) end
-				end
-				tw(activeTab.line,{BackgroundTransparency=1},0.15)
+				tw(activeTab.btn,{BackgroundColor3=Color3.fromRGB(14,10,28)},0.15)
+				tw(activeTab.lbl,{TextColor3=C.textDim},0.15)
+				tw(activeTab.bar,{BackgroundTransparency=1},0.15)
+				if activeTab.icon then tw(activeTab.icon,{ImageColor3=C.textDim},0.15) end
 			end
-			activeTab=entry;tabContainer.Visible=true
-			for _,c in pairs(tabBtn:GetChildren()) do
-				if c:IsA("TextLabel") then tw(c,{TextColor3=C.textMain},0.15)
-				elseif c:IsA("ImageLabel") then tw(c,{ImageColor3=C.purple},0.15) end
-			end
-			tw(underline,{BackgroundTransparency=0},0.15)
+			activeTab=entry
+			tabContainer.Visible=true
+			tw(tabBtn,{BackgroundColor3=Color3.fromRGB(30,18,58)},0.15)
+			tw(tabLbl,{TextColor3=C.textMain},0.15)
+			tw(activeBar,{BackgroundTransparency=0},0.15)
+			if tabIcon then tw(tabIcon,{ImageColor3=C.purple},0.15) end
 			if searchOpen then closeSearch() end
 		end
+
 		if tabCount==1 then activate() end
 		tabBtn.MouseButton1Click:Connect(activate)
+
+		tabBtn.MouseEnter:Connect(function()
+			if activeTab~=entry then
+				tw(tabBtn,{BackgroundColor3=Color3.fromRGB(22,14,44)},0.1)
+			end
+		end)
+		tabBtn.MouseLeave:Connect(function()
+			if activeTab~=entry then
+				tw(tabBtn,{BackgroundColor3=Color3.fromRGB(14,10,28)},0.1)
+			end
+		end)
 
 		local tabObj={}
 
