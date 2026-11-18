@@ -1135,6 +1135,15 @@ function AurixUI:CreateWindow(cfg)
 		toggleKey=cfg.ToggleKey or Enum.KeyCode.RightBracket
 	end
 
+	-- config saving setup. Declared before the session block: the session path is
+	-- built from configFolder, so it has to exist first.
+	local configSaving=cfg.ConfigurationSaving or {}
+	local configEnabled=configSaving.Enabled==true
+	local configFolder=configSaving.FolderName or CONFIG_FOLDER
+	local configFileName=configSaving.FileName or tostring(game.PlaceId)
+	CONFIG_FILE=configFolder.."/"..configFileName..".json"
+	if configEnabled then ensureFolder(configFolder) end
+
 	-- ── session ───────────────────────────────────────────────────────────────
 	-- Position, tab, scale, theme and fold state survive a reinject. Written on
 	-- change, debounced, and read before anything is built.
@@ -1158,14 +1167,6 @@ function AurixUI:CreateWindow(cfg)
 	local wantedTheme=tostring(cfg.Theme or (sessionData and sessionData.theme) or currentTheme)
 	if not THEMES[wantedTheme] then wantedTheme="ice" end
 	applyTheme(wantedTheme)
-
-	-- config saving setup
-	local configSaving=cfg.ConfigurationSaving or {}
-	local configEnabled=configSaving.Enabled==true
-	local configFolder=configSaving.FolderName or CONFIG_FOLDER
-	local configFileName=configSaving.FileName or tostring(game.PlaceId)
-	CONFIG_FILE=configFolder.."/"..configFileName..".json"
-	if configEnabled then ensureFolder(configFolder) end
 
 	if me.PlayerGui:FindFirstChild("AurixUI") then me.PlayerGui.AurixUI:Destroy() end
 
