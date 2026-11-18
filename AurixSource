@@ -1884,6 +1884,24 @@ function AurixUI:CreateWindow(cfg)
 		refreshHUD()
 	end
 
+	-- Tabs share the bar instead of using a fixed 100/110px each. A hub with six
+	-- tabs overflowed the 440px window and the last one sat off the edge.
+	local tabButtons={}
+	local function layoutTabs()
+		local n=#tabButtons
+		if n==0 then return end
+		local scale=1/n
+		for _,b in ipairs(tabButtons) do
+			b.btn.Size=UDim2.new(scale,0,1,0)
+			if b.icon then
+				local showIcon=(n<=4)
+				b.icon.Visible=showIcon
+				b.label.Position=showIcon and UDim2.new(0,24,0,0) or UDim2.new(0,0,0,0)
+				b.label.Size=showIcon and UDim2.new(1,-28,1,0) or UDim2.new(1,0,1,0)
+			end
+		end
+	end
+
 	-- ── CreateTab ─────────────────────────────────────────────────────────────
 	function winObj:CreateTab(tabName,iconId)
 		tabCount=tabCount+1
@@ -1892,18 +1910,23 @@ function AurixUI:CreateWindow(cfg)
 			Size=UDim2.new(0,iconId and 110 or 100,1,0),
 			BackgroundColor3=C.bgDeep,BorderSizePixel=0,Text="",ZIndex=3,Parent=tabBar})
 
+		local tabIcon,tabLabel=nil,nil
 		if iconId and iconId~=0 then
-			newInst("ImageLabel",{Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,10,0.5,-7),
+			tabIcon=newInst("ImageLabel",{Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,10,0.5,-7),
 				BackgroundTransparency=1,
 				Image=type(iconId)=="number" and ("rbxassetid://"..iconId) or tostring(iconId),
 				ImageColor3=C.textDim,ZIndex=4,Parent=tabBtn})
-			newInst("TextLabel",{Size=UDim2.new(1,-30,1,0),Position=UDim2.new(0,28,0,0),
+			tabLabel=newInst("TextLabel",{Size=UDim2.new(1,-30,1,0),Position=UDim2.new(0,28,0,0),
 				BackgroundTransparency=1,Text=tabName,TextColor3=C.textDim,
+				TextTruncate=Enum.TextTruncate.AtEnd,
 				Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=tabBtn})
 		else
-			newInst("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text=tabName,
-				TextColor3=C.textDim,Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=tabBtn})
+			tabLabel=newInst("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text=tabName,
+				TextColor3=C.textDim,TextTruncate=Enum.TextTruncate.AtEnd,
+				Font=Enum.Font.GothamBold,TextSize=11,ZIndex=4,Parent=tabBtn})
 		end
+		table.insert(tabButtons,{btn=tabBtn,icon=tabIcon,label=tabLabel})
+		layoutTabs()
 
 		local underline=newInst("Frame",{Size=UDim2.new(1,0,0,2),Position=UDim2.new(0,0,1,-2),
 			BackgroundColor3=C.border,BorderSizePixel=0,BackgroundTransparency=1,ZIndex=4,Parent=tabBtn})
