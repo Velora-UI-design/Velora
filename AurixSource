@@ -577,8 +577,8 @@ local function attachTooltip(gui, text)
 	gui.MouseLeave:Connect(hideTooltip)
 end
 
--- ==== NOTIFICATIONS (Rayfield Gen2 card stack) ====
-local NOTIF_DUR = 3.5
+-- ==== NOTIFICATIONS (animated slide-in, countdown bar, click to dismiss) ====
+local NOTIF_DUR = 3.6
 local MAX_NOTIFS = 4
 local notifStack = nil
 local notifActive = {}
@@ -589,7 +589,7 @@ local function ensureNotifStack()
 	if notifStack and notifStack.Parent then return notifStack end
 	if not notifScreen then return nil end
 	local vp = getViewport(notifScreen)
-	local w = math.min(286, math.max(210, vp.X - 24))
+	local w = math.min(296, math.max(220, vp.X - 24))
 	notifStack = newInst("Frame", {
 		Name = "AurixNotifications",
 		AnchorPoint = Vector2.new(1, 1),
@@ -608,7 +608,7 @@ end
 local function updateNotifStackWidth()
 	if not (notifStack and notifStack.Parent) then return end
 	local vp = getViewport(notifScreen)
-	local w = math.min(286, math.max(210, vp.X - 24))
+	local w = math.min(296, math.max(220, vp.X - 24))
 	notifStack.Size = UDim2.new(0, w, 1, -28)
 end
 
@@ -619,64 +619,94 @@ local function notify(title, content, col, dur)
 	col = col or C.accent
 	title = tostring(title or "Notification")
 	content = tostring(content or "")
+	local life = dur or NOTIF_DUR
 	local now = os.clock()
 	local key = title .. "\1" .. content
 
 	local dup = notifDedupe[key]
-	if dup and (now - dup.time) < 1.2 and dup.entry.frame.Parent then
+	if dup and (now - dup.time) < 1.4 and dup.entry.slot.Parent then
 		dup.count = dup.count + 1
 		dup.time = now
 		dup.entry.countLbl.Text = "x" .. dup.count
 		dup.entry.countLbl.Visible = true
+		dup.entry.bump()
 		return
 	end
 
 	if #notifActive >= MAX_NOTIFS then
 		local oldest = table.remove(notifActive, 1)
-		if oldest and oldest.frame.Parent then
-			local f = oldest.frame
-			tw(f, { BackgroundTransparency = 1 }, 0.2)
-			task.delay(0.22, function() if f.Parent then f:Destroy() end end)
-		end
+		if oldest and oldest.dismiss then oldest.dismiss(true) end
 	end
+
+	local slot = newInst("Frame", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		ClipsDescendants = false,
+		ZIndex = 121,
+		Parent = stack,
+	})
 
 	local card = newInst("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
+		Position = UDim2.new(0, 76, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
+		ClipsDescendants = true,
 		ZIndex = 121,
-		Parent = stack,
+		Parent = slot,
 	})
 	corner(14, card)
-	vGrad(card, C.bgTop, C.bgBot, 120)
+	vGrad(card, C.bgTop, C.bgBot, 118)
 	local cardStroke = stroke(C.surfaceStroke, 1, card, 1)
-	padding(11, 11, 14, 14, card)
+	local cardScale = newInst("UIScale", { Scale = 0.94, Parent = card })
 
-	local bar = newInst("Frame", {
-		Size = UDim2.new(0, 3, 0, 26),
-		Position = UDim2.new(0, -6, 0.5, -13),
-		BackgroundColor3 = col,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ZIndex = 122,
-		Parent = card,
-	})
-	corner(99, bar)
-
-	local wrap = newInst("Frame", {
-		Size = UDim2.new(1, -18, 0, 0),
-		Position = UDim2.new(0, 6, 0, 0),
+	local inner = newInst("Frame", {
+		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		ZIndex = 122,
 		Parent = card,
 	})
-	listLayout(wrap, 3)
+	padding(11, 14, 12, 12, inner)
+
+	local iconBox = newInst("Frame", {
+		Size = UDim2.fromOffset(30, 30),
+		Position = UDim2.new(0, 0, 0.5, -15),
+		BackgroundColor3 = col,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 123,
+		Parent = inner,
+	})
+	corner(10, iconBox)
+	local iconStroke = stroke(col, 1, iconBox, 1)
+	local iconDot = newInst("Frame", {
+		Size = UDim2.fromOffset(10, 10),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundColor3 = col,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 124,
+		Parent = iconBox,
+	})
+	corner(99, iconDot)
+
+	local wrap = newInst("Frame", {
+		Size = UDim2.new(1, -42, 0, 0),
+		Position = UDim2.new(0, 40, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		ZIndex = 123,
+		Parent = inner,
+	})
+	listLayout(wrap, 2)
 
 	local titleLbl = newInst("TextLabel", {
-		Size = UDim2.new(1, -24, 0, 16),
+		Size = UDim2.new(1, -26, 0, 17),
 		BackgroundTransparency = 1,
 		Text = title,
 		TextColor3 = C.textMain,
@@ -685,7 +715,7 @@ local function notify(title, content, col, dur)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Font = Enum.Font.GothamBold,
 		TextSize = 13,
-		ZIndex = 123,
+		ZIndex = 124,
 		Parent = wrap,
 	})
 
@@ -702,52 +732,123 @@ local function notify(title, content, col, dur)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Font = Enum.Font.Gotham,
 			TextSize = 11,
-			ZIndex = 123,
+			ZIndex = 124,
 			Parent = wrap,
 		})
 	end
 
 	local countLbl = newInst("TextLabel", {
-		Size = UDim2.new(0, 28, 0, 16),
-		Position = UDim2.new(1, -24, 0, 0),
+		Size = UDim2.fromOffset(26, 16),
+		Position = UDim2.new(1, -26, 0, 0),
 		BackgroundTransparency = 1,
 		Text = "",
 		TextColor3 = col,
 		TextXAlignment = Enum.TextXAlignment.Right,
 		Font = Enum.Font.GothamBold,
 		TextSize = 10,
-		ZIndex = 124,
+		ZIndex = 125,
 		Visible = false,
+		Parent = inner,
+	})
+
+	-- animated countdown bar along the bottom edge
+	local timerTrack = newInst("Frame", {
+		Size = UDim2.new(1, 0, 0, 2),
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		BackgroundColor3 = col,
+		BackgroundTransparency = 0.82,
+		BorderSizePixel = 0,
+		ZIndex = 124,
+		Parent = card,
+	})
+	local timerFill = newInst("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = col,
+		BorderSizePixel = 0,
+		ZIndex = 125,
+		Parent = timerTrack,
+	})
+
+	local clickDismiss = newInst("TextButton", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 126,
 		Parent = card,
 	})
 
-	local entry = { frame = card, countLbl = countLbl }
-	table.insert(notifActive, entry)
-	notifDedupe[key] = { entry = entry, count = 1, time = now }
-	table.insert(notifHistory, 1, { title = title, content = content, at = os.time() })
-	while #notifHistory > 20 do table.remove(notifHistory) end
+	local dismissed = false
+	local timerGen = 0
+	local entry = { slot = slot, frame = card, countLbl = countLbl }
 
-	tw(card, { BackgroundTransparency = C.isLight and 0.04 or 0.08 }, 0.32)
-	tw(cardStroke, { Transparency = C.isLight and 0.4 or 0.86 }, 0.32)
-	tw(bar, { BackgroundTransparency = 0 }, 0.3)
-	tw(titleLbl, { TextTransparency = 0 }, 0.28)
-	if bodyLbl then tw(bodyLbl, { TextTransparency = 0.2 }, 0.32) end
-
-	task.delay(dur or NOTIF_DUR, function()
-		if not card.Parent then return end
-		tw(card, { BackgroundTransparency = 1 }, 0.28)
-		tw(cardStroke, { Transparency = 1 }, 0.25)
-		tw(bar, { BackgroundTransparency = 1 }, 0.24)
-		tw(titleLbl, { TextTransparency = 1 }, 0.22)
-		if bodyLbl then tw(bodyLbl, { TextTransparency = 1 }, 0.22) end
-		task.delay(0.3, function()
-			if card.Parent then card:Destroy() end
+	local function dismiss(fast)
+		if dismissed then return end
+		dismissed = true
+		local d = fast and 0.16 or 0.28
+		tw(card, { Position = UDim2.new(0, 84, 0, 0), BackgroundTransparency = 1 }, d, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		tw(cardScale, { Scale = 0.92 }, d)
+		tw(cardStroke, { Transparency = 1 }, d)
+		tw(iconBox, { BackgroundTransparency = 1 }, d * 0.8)
+		tw(iconStroke, { Transparency = 1 }, d * 0.8)
+		tw(iconDot, { BackgroundTransparency = 1 }, d * 0.8)
+		tw(titleLbl, { TextTransparency = 1 }, d * 0.8)
+		if bodyLbl then tw(bodyLbl, { TextTransparency = 1 }, d * 0.8) end
+		tw(timerFill, { BackgroundTransparency = 1 }, d * 0.7)
+		task.delay(d * 0.65, function()
+			if slot.Parent then
+				slot.AutomaticSize = Enum.AutomaticSize.None
+				slot.ClipsDescendants = true
+				tw(slot, { Size = UDim2.new(1, 0, 0, 0) }, 0.2)
+			end
+		end)
+		task.delay(d + 0.22, function()
+			if slot.Parent then slot:Destroy() end
 			if notifDedupe[key] and notifDedupe[key].entry == entry then notifDedupe[key] = nil end
 			for i, e in ipairs(notifActive) do
 				if e == entry then table.remove(notifActive, i); break end
 			end
 		end)
-	end)
+	end
+
+	local function startTimer()
+		timerGen = timerGen + 1
+		local myGen = timerGen
+		timerFill.Size = UDim2.fromScale(1, 1)
+		tw(timerFill, { Size = UDim2.fromScale(0, 1) }, life, Enum.EasingStyle.Linear)
+		task.delay(life, function()
+			if myGen == timerGen then dismiss(false) end
+		end)
+	end
+
+	entry.dismiss = dismiss
+	entry.bump = function()
+		spring(cardScale, { Scale = 1.04 }, 0.14)
+		task.delay(0.14, function()
+			if cardScale.Parent then spring(cardScale, { Scale = 1 }, 0.22) end
+		end)
+		startTimer()
+	end
+
+	clickDismiss.MouseButton1Click:Connect(function() dismiss(true) end)
+	clickDismiss.MouseEnter:Connect(function() tw(cardStroke, { Color = col, Transparency = 0.25 }, 0.16) end)
+	clickDismiss.MouseLeave:Connect(function() tw(cardStroke, { Color = C.surfaceStroke, Transparency = C.isLight and 0.4 or 0.86 }, 0.18) end)
+
+	table.insert(notifActive, entry)
+	notifDedupe[key] = { entry = entry, count = 1, time = now }
+	table.insert(notifHistory, 1, { title = title, content = content, at = os.time() })
+	while #notifHistory > 20 do table.remove(notifHistory) end
+
+	spring(card, { Position = UDim2.new(0, 0, 0, 0) }, 0.42)
+	spring(cardScale, { Scale = 1 }, 0.4)
+	tw(card, { BackgroundTransparency = C.isLight and 0.03 or 0.06 }, 0.3)
+	tw(cardStroke, { Transparency = C.isLight and 0.4 or 0.86 }, 0.3)
+	tw(iconBox, { BackgroundTransparency = 0.84 }, 0.32)
+	tw(iconStroke, { Transparency = 0.35 }, 0.32)
+	tw(iconDot, { BackgroundTransparency = 0 }, 0.32)
+	tw(titleLbl, { TextTransparency = 0 }, 0.28)
+	if bodyLbl then tw(bodyLbl, { TextTransparency = 0.18 }, 0.32) end
+	startTimer()
 end
 
 local function showConfigBanner(win)
@@ -1387,6 +1488,21 @@ function AurixUI:CreateWindow(cfg)
 	corner(28, shadowFrame)
 	local shadowScale = newInst("UIScale", { Scale = uiScale, Parent = shadowFrame })
 
+	-- visual preferences (all toggleable live in Settings, saved in session)
+	local macButtons = (cfg.MacButtons == true) or (sessionData and sessionData.macButtons == true) or false
+	local bgEffect = true
+	if cfg.BackgroundEffect ~= nil then
+		bgEffect = cfg.BackgroundEffect == true
+	elseif sessionData and sessionData.bgEffect ~= nil then
+		bgEffect = sessionData.bgEffect == true
+	end
+	local liveGradient = true
+	if cfg.Gradient ~= nil then
+		liveGradient = cfg.Gradient == true
+	elseif sessionData and sessionData.liveGradient ~= nil then
+		liveGradient = sessionData.liveGradient == true
+	end
+
 	-- main window
 	local win = newInst("Frame", {
 		Name = "Main",
@@ -1402,15 +1518,134 @@ function AurixUI:CreateWindow(cfg)
 		Parent = screen,
 	})
 	corner(20, win)
-	local winGrad = vGrad(win, C.bgTop, C.bgBot, 105)
+	local winGrad = vGrad(win, C.bgTop, C.bgBot:Lerp(C.accentFade, 0.28), 110)
 	local winStroke = stroke(C.surfaceStroke, 1, win, C.strokeTrans)
 	local uiScaleObj = newInst("UIScale", { Scale = uiScale, Parent = win })
 
+	local function paintWindowGradient()
+		if liveGradient then
+			local bot = C.isLight and C.bgBot:Lerp(C.accentFade, 0.22) or C.bgBot:Lerp(C.accentFade, 0.32)
+			winGrad.Color = ColorSequence.new(C.bgTop, bot)
+		else
+			winGrad.Color = ColorSequence.new(C.bgTop, C.bgTop)
+			winGrad.Offset = Vector2.new(0, 0)
+			winGrad.Rotation = 90
+		end
+	end
+	paintWindowGradient()
+
+	local gradGen = 0
+	local function syncLiveGradient()
+		gradGen = gradGen + 1
+		paintWindowGradient()
+		if not liveGradient then return end
+		local myGen = gradGen
+		task.spawn(function()
+			local forward = true
+			while myGen == gradGen and liveGradient and not destroyed and win.Parent do
+				if win.Visible and not hidden then
+					local targetRot = forward and 150 or 85
+					local targetOff = forward and Vector2.new(0.14, 0.10) or Vector2.new(-0.14, -0.08)
+					tw(winGrad, { Rotation = targetRot, Offset = targetOff }, 4.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+					forward = not forward
+				end
+				task.wait(5.0)
+			end
+		end)
+	end
+	syncLiveGradient()
+
+	-- background ambient effect layer (drifting accent orbs + twinkling motes, on by default)
+	local fxLayer = newInst("Frame", {
+		Name = "AurixFX",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Visible = bgEffect,
+		ZIndex = 2,
+		Parent = win,
+	})
+	corner(20, fxLayer)
+
+	local fxOrbs, fxMotes = {}, {}
+	for i = 1, 4 do
+		local sz = 84 + (i * 22)
+		local orb = newInst("Frame", {
+			Size = UDim2.fromOffset(sz, sz),
+			BackgroundColor3 = (i % 2 == 0) and C.accent2 or C.accent,
+			BackgroundTransparency = C.isLight and 0.92 or 0.91,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+			Parent = fxLayer,
+		})
+		corner(999, orb)
+		fxOrbs[i] = {
+			f = orb,
+			x = math.random() * winW,
+			y = math.random() * winH,
+			vx = (math.random() - 0.5) * 14,
+			vy = -(6 + math.random() * 10),
+			phase = math.random() * 6.28,
+		}
+	end
+	for i = 1, 18 do
+		local sz = (i % 3 == 0) and 3 or 2
+		local dot = newInst("Frame", {
+			Size = UDim2.fromOffset(sz, sz),
+			BackgroundColor3 = (i % 2 == 0) and C.accent or C.textMain,
+			BackgroundTransparency = 0.65,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+			Parent = fxLayer,
+		})
+		corner(99, dot)
+		fxMotes[i] = {
+			f = dot,
+			x = math.random() * winW,
+			y = math.random() * winH,
+			vx = (math.random() - 0.5) * 8,
+			vy = -(9 + math.random() * 16),
+			phase = math.random() * 6.28,
+			amp = 0.14 + math.random() * 0.12,
+		}
+	end
+
+	track(RunService.Heartbeat:Connect(function(dt)
+		if not bgEffect or destroyed or hidden or minimized or not win.Visible then return end
+		local bw = math.max(winW, 280)
+		local bh = math.max(winH, 220)
+		local t = os.clock()
+		local orbBase = C.isLight and 0.93 or 0.91
+		for _, o in ipairs(fxOrbs) do
+			o.x = o.x + o.vx * dt
+			o.y = o.y + o.vy * dt
+			if o.y < -160 then o.y = bh + 60; o.x = math.random() * bw end
+			if o.x < -160 then o.x = bw + 40 elseif o.x > bw + 120 then o.x = -120 end
+			o.f.Position = UDim2.fromOffset(math.floor(o.x), math.floor(o.y))
+			o.f.BackgroundTransparency = orbBase - 0.03 * math.sin(t * 0.75 + o.phase)
+		end
+		for _, m in ipairs(fxMotes) do
+			m.x = m.x + m.vx * dt
+			m.y = m.y + m.vy * dt
+			if m.y < -8 then m.y = bh + 8; m.x = math.random() * bw end
+			if m.x < -8 then m.x = bw + 4 elseif m.x > bw + 8 then m.x = -4 end
+			m.f.Position = UDim2.fromOffset(math.floor(m.x), math.floor(m.y))
+			m.f.BackgroundTransparency = 0.68 + m.amp * math.sin(t * 1.6 + m.phase)
+		end
+	end))
+
 	onTheme(function()
-		winGrad.Color = ColorSequence.new(C.bgTop, C.bgBot)
+		paintWindowGradient()
 		winStroke.Color = C.surfaceStroke
 		winStroke.Transparency = C.strokeTrans
 		shadowFrame.BackgroundColor3 = C.shadow
+		for i, o in ipairs(fxOrbs) do
+			o.f.BackgroundColor3 = (i % 2 == 0) and C.accent2 or C.accent
+		end
+		for i, m in ipairs(fxMotes) do
+			m.f.BackgroundColor3 = (i % 2 == 0) and C.accent or C.textMain
+		end
 	end)
 
 	-- bottom drag bar (Rayfield Gen2 signature pill under the window)
@@ -1474,10 +1709,51 @@ function AurixUI:CreateWindow(cfg)
 		topDivider.BackgroundTransparency = C.isLight and 0.55 or 0.92
 	end)
 
+	-- macOS traffic-light dots (toggled via Settings -> MacBook Buttons)
+	local macDots = newInst("Frame", {
+		Name = "MacButtons",
+		Size = UDim2.fromOffset(56, 22),
+		Position = UDim2.new(0, 14, 0.5, -11),
+		BackgroundTransparency = 1,
+		Visible = macButtons,
+		ZIndex = 7,
+		Parent = topbar,
+	})
+	local function makeMacDot(xOff, col, glyph)
+		local d = newInst("TextButton", {
+			Size = UDim2.fromOffset(13, 13),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0, xOff, 0.5, 0),
+			BackgroundColor3 = col,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = glyph,
+			TextColor3 = Color3.fromRGB(30, 16, 16),
+			TextTransparency = 1,
+			Font = Enum.Font.GothamBlack,
+			TextSize = 9,
+			ZIndex = 8,
+			Parent = macDots,
+		})
+		corner(99, d)
+		d.MouseEnter:Connect(function()
+			spring(d, { Size = UDim2.fromOffset(15, 15) }, 0.2)
+			tw(d, { TextTransparency = 0.25 }, 0.14)
+		end)
+		d.MouseLeave:Connect(function()
+			spring(d, { Size = UDim2.fromOffset(13, 13) }, 0.2)
+			tw(d, { TextTransparency = 1 }, 0.14)
+		end)
+		return d
+	end
+	local dotRed    = makeMacDot(8,  Color3.fromRGB(255, 95, 87),  "x")
+	local dotYellow = makeMacDot(27, Color3.fromRGB(255, 189, 46), "-")
+	local dotGreen  = makeMacDot(46, Color3.fromRGB(40, 202, 65),  "v")
+
 	-- brand mark
 	local logoMark = newInst("Frame", {
 		Size = UDim2.fromOffset(28, 28),
-		Position = UDim2.new(0, 16, 0.5, -14),
+		Position = UDim2.new(0, macButtons and 74 or 16, 0.5, -14),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		BorderSizePixel = 0,
 		ZIndex = 5,
@@ -1502,8 +1778,8 @@ function AurixUI:CreateWindow(cfg)
 
 	-- title + subtitle
 	local titleWrap = newInst("Frame", {
-		Size = UDim2.new(1, -200, 1, 0),
-		Position = UDim2.new(0, 52, 0, 0),
+		Size = UDim2.new(1, macButtons and -194 or -200, 1, 0),
+		Position = UDim2.new(0, macButtons and 110 or 52, 0, 0),
 		BackgroundTransparency = 1,
 		ZIndex = 5,
 		Parent = topbar,
@@ -1541,8 +1817,8 @@ function AurixUI:CreateWindow(cfg)
 
 	-- compact bar (shown in topbar when folded)
 	local compactBar = newInst("ScrollingFrame", {
-		Size = UDim2.new(1, -172, 0, 32),
-		Position = UDim2.new(0, 52, 0.5, -16),
+		Size = UDim2.new(1, macButtons and -134 or -172, 0, 32),
+		Position = UDim2.new(0, macButtons and 110 or 52, 0.5, -16),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AutomaticCanvasSize = Enum.AutomaticSize.X,
@@ -1653,6 +1929,32 @@ function AurixUI:CreateWindow(cfg)
 	local minBtn = makeActionBtn(3, "-", false)
 	local hideBtn = makeActionBtn(4, "v", false)
 	local closeBtn = makeActionBtn(5, "x", false)
+	minBtn.Visible = not macButtons
+	hideBtn.Visible = not macButtons
+	closeBtn.Visible = not macButtons
+
+	local function applyMacButtons(animate)
+		macDots.Visible = macButtons
+		minBtn.Visible = not macButtons
+		hideBtn.Visible = not macButtons
+		closeBtn.Visible = not macButtons
+		local logoPos = UDim2.new(0, macButtons and 74 or 16, 0.5, -14)
+		local titlePos = UDim2.new(0, macButtons and 110 or 52, 0, 0)
+		local titleSize = UDim2.new(1, macButtons and -194 or -200, 1, 0)
+		local compPos = UDim2.new(0, macButtons and 110 or 52, 0.5, -16)
+		local compSize = UDim2.new(1, macButtons and -134 or -172, 0, 32)
+		if animate then
+			tw(logoMark, { Position = logoPos }, 0.32)
+			tw(titleWrap, { Position = titlePos, Size = titleSize }, 0.32)
+			tw(compactBar, { Position = compPos, Size = compSize }, 0.32)
+		else
+			logoMark.Position = logoPos
+			titleWrap.Position = titlePos
+			titleWrap.Size = titleSize
+			compactBar.Position = compPos
+			compactBar.Size = compSize
+		end
+	end
 
 	-- ==== TAB STRIP (Scrollable pills, Rayfield Gen2 style) ====
 	local tabBar = newInst("ScrollingFrame", {
@@ -1677,7 +1979,7 @@ function AurixUI:CreateWindow(cfg)
 	local searchBar = newInst("Frame", {
 		Name = "SearchBar",
 		Size = UDim2.new(1, -28, 0, 32),
-		Position = UDim2.new(0.5, 0, 0, TOPBAR_H + 5),
+		Position = UDim2.new(0.5, 0, 0, TOPBAR_H - 2),
 		AnchorPoint = Vector2.new(0.5, 0),
 		BackgroundColor3 = C.inputBg,
 		BackgroundTransparency = 1,
@@ -1736,29 +2038,30 @@ function AurixUI:CreateWindow(cfg)
 		clearBtn.TextColor3 = C.textDim
 	end)
 
-	-- ==== BODY SCROLL AREA ====
-	local bodyFrame = newInst("ScrollingFrame", {
-		Name = "Body",
+	-- ==== PAGES AREA (UIPageLayout smooth horizontal tab transitions) ====
+	local pagesWrap = newInst("Frame", {
+		Name = "Pages",
 		Size = UDim2.new(1, 0, 1, -CHROME_H),
 		Position = UDim2.new(0, 0, 0, CHROME_H),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 3,
-		ScrollBarImageColor3 = C.accentDim,
-		ScrollBarImageTransparency = 0.45,
-		CanvasSize = UDim2.new(0, 0, 0, 0),
 		ClipsDescendants = true,
 		ZIndex = 3,
 		Parent = win,
 	})
-	padding(6, 26, 14, 14, bodyFrame)
-	local bodyLayout = listLayout(bodyFrame, 8)
-	bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-		bodyFrame.CanvasSize = UDim2.new(0, 0, 0, bodyLayout.AbsoluteContentSize.Y + 34)
-	end)
-	onTheme(function()
-		bodyFrame.ScrollBarImageColor3 = C.accentDim
-	end)
+	local pagesLayout = newInst("UIPageLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		EasingStyle = Enum.EasingStyle.Exponential,
+		EasingDirection = Enum.EasingDirection.Out,
+		TweenTime = 0.42,
+		ScrollWheelInputEnabled = false,
+		GamepadInputEnabled = false,
+		TouchInputEnabled = false,
+		Parent = pagesWrap,
+	})
 
 	-- bottom content dissolve fade (Rayfield Gen2 touch)
 	local bottomFade = newInst("Frame", {
@@ -1782,7 +2085,7 @@ function AurixUI:CreateWindow(cfg)
 		Parent = bottomFade,
 	})
 	onTheme(function()
-		bottomFade.BackgroundColor3 = C.bgBot
+		bottomFade.BackgroundColor3 = liveGradient and C.bgBot or C.bgTop
 	end)
 
 	-- empty search state
@@ -1822,16 +2125,19 @@ function AurixUI:CreateWindow(cfg)
 		emptySub.TextColor3 = C.textDim
 	end)
 
-	-- search logic
+	-- search logic (filters active tab + keeps other tabs clean)
 	local allElements = {}
+	local activeTab = nil
 	local function runSearch(query)
 		query = query:lower():gsub("^%s*(.-)%s*$", "%1")
-		local hits = 0
+		local hitsInActive = 0
 		for _, entry in ipairs(allElements) do
 			if entry.frame and entry.frame.Parent and not entry.isSection then
 				local vis = (query == "") or (entry.name:lower():find(query, 1, true) ~= nil)
 				entry.frame.Visible = vis
-				if vis then hits = hits + 1 end
+				if vis and (not activeTab or entry.frame.Parent == activeTab.page) then
+					hitsInActive = hitsInActive + 1
+				end
 			end
 		end
 		for _, entry in ipairs(allElements) do
@@ -1843,7 +2149,7 @@ function AurixUI:CreateWindow(cfg)
 				entry.frame.Visible = (query == "") or any
 			end
 		end
-		local miss = (query ~= "" and hits == 0)
+		local miss = (query ~= "" and hitsInActive == 0)
 		emptyState.Visible = miss
 		emptySub.Text = miss and ('Nothing matches "' .. query .. '"') or ""
 	end
@@ -1860,16 +2166,18 @@ function AurixUI:CreateWindow(cfg)
 	local function openSearch()
 		if searchOpen or minimized then return end
 		searchOpen = true
-		tabBar.Visible = false
+		tw(tabBar, { Position = UDim2.new(0, 0, 0, TOPBAR_H - 8) }, 0.22)
+		task.delay(0.08, function() if searchOpen then tabBar.Visible = false end end)
 		searchBar.Visible = true
+		searchBar.Position = UDim2.new(0.5, 0, 0, TOPBAR_H + 12)
 		searchBar.BackgroundTransparency = 1
 		searchStroke.Transparency = 1
 		sbIcon.ImageTransparency = 1
 		searchBox.TextTransparency = 1
-		tw(searchBar, { BackgroundTransparency = 0 }, 0.25)
+		tw(searchBar, { Position = UDim2.new(0.5, 0, 0, TOPBAR_H + 5), BackgroundTransparency = 0 }, 0.28)
 		tw(searchStroke, { Transparency = 0.2, Color = C.accent }, 0.25)
-		tw(sbIcon, { ImageTransparency = 0 }, 0.22)
-		tw(searchBox, { TextTransparency = 0 }, 0.22)
+		tw(sbIcon, { ImageTransparency = 0 }, 0.24)
+		tw(searchBox, { TextTransparency = 0 }, 0.24)
 		tw(searchIcon, { ImageColor3 = C.accent }, 0.2)
 		task.delay(0.06, function() searchBox:CaptureFocus() end)
 	end
@@ -1879,15 +2187,19 @@ function AurixUI:CreateWindow(cfg)
 		searchOpen = false
 		searchBox.Text = ""
 		runSearch("")
-		tw(searchBar, { BackgroundTransparency = 1 }, 0.2)
+		tw(searchBar, { Position = UDim2.new(0.5, 0, 0, TOPBAR_H + 12), BackgroundTransparency = 1 }, 0.2)
 		tw(searchStroke, { Transparency = 1 }, 0.18)
 		tw(sbIcon, { ImageTransparency = 1 }, 0.16)
 		tw(searchBox, { TextTransparency = 1 }, 0.16)
 		tw(searchIcon, { ImageColor3 = C.textLight }, 0.2)
-		task.delay(0.2, function()
+		task.delay(0.18, function()
 			if not searchOpen then
 				searchBar.Visible = false
-				if not minimized then tabBar.Visible = true end
+				if not minimized then
+					tabBar.Visible = true
+					tabBar.Position = UDim2.new(0, 0, 0, TOPBAR_H - 6)
+					tw(tabBar, { Position = UDim2.new(0, 0, 0, TOPBAR_H + 2) }, 0.26)
+				end
 			end
 		end)
 	end
@@ -1908,7 +2220,6 @@ function AurixUI:CreateWindow(cfg)
 	-- ==== WINDOW CLAMP, SYNC & RESPONSIVE REFIT ====
 	local saveSession = nil
 	local tabCount = 0
-	local activeTab = nil
 	local activeCompact = nil
 	local tabEntries = {}
 
@@ -2059,12 +2370,12 @@ function AurixUI:CreateWindow(cfg)
 		dragBar.Position = UDim2.new(win.Position.X.Scale, win.Position.X.Offset, win.Position.Y.Scale, win.Position.Y.Offset + (curH * uiScale) / 2 + 14)
 	end))
 
-	-- ==== PROFILE + QUICK SETTINGS POPOVER ====
+	-- ==== PROFILE + SETTINGS POPOVER (scrollable on mobile) ====
 	local profileOpen = false
 	local anonymous = false
 	local profilePanel = newInst("Frame", {
 		Name = "ProfilePopover",
-		Size = UDim2.fromOffset(252, 0),
+		Size = UDim2.fromOffset(264, 0),
 		Position = UDim2.new(1, -14, 0, TOPBAR_H + 4),
 		AnchorPoint = Vector2.new(1, 0),
 		BackgroundColor3 = Color3.new(1, 1, 1),
@@ -2078,10 +2389,24 @@ function AurixUI:CreateWindow(cfg)
 	corner(16, profilePanel)
 	local profGrad = vGrad(profilePanel, C.bgTop, C.bgBot, 120)
 	local profPanelStroke = stroke(C.surfaceStroke, 1, profilePanel, C.strokeTrans)
-	padding(12, 12, 12, 12, profilePanel)
-	local profList = listLayout(profilePanel, 8)
 
-	local profHead = newInst("Frame", { Size = UDim2.new(1, 0, 0, 44), BackgroundTransparency = 1, ZIndex = 61, Parent = profilePanel })
+	local profScroll = newInst("ScrollingFrame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 2,
+		ScrollBarImageColor3 = C.accentDim,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		ZIndex = 61,
+		Parent = profilePanel,
+	})
+	padding(12, 12, 12, 12, profScroll)
+	local profList = listLayout(profScroll, 8)
+	profList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		profScroll.CanvasSize = UDim2.new(0, 0, 0, profList.AbsoluteContentSize.Y + 24)
+	end)
+
+	local profHead = newInst("Frame", { Size = UDim2.new(1, 0, 0, 44), BackgroundTransparency = 1, ZIndex = 61, Parent = profScroll })
 	local pAvaBg = newInst("Frame", { Size = UDim2.fromOffset(42, 42), BackgroundColor3 = C.bgRowTop, BorderSizePixel = 0, ZIndex = 62, Parent = profHead })
 	corner(12, pAvaBg)
 	local pAvaImg = newInst("ImageLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = "", ZIndex = 63, Parent = pAvaBg })
@@ -2113,19 +2438,114 @@ function AurixUI:CreateWindow(cfg)
 		Text = execName .. " | " .. (isMobDevice and "Mobile" or "PC"),
 		TextColor3 = C.textDim, Font = Enum.Font.GothamMedium, TextSize = 10,
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 62, Parent = profilePanel,
+		ZIndex = 62, Parent = profScroll,
 	})
+
+	-- UI settings toggles (MacBook Buttons, Background Effect, Gradient, Streamer Mode)
+	local settingsRowTitle = newInst("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+		Text = "INTERFACE", TextColor3 = C.textDim, Font = Enum.Font.GothamBold, TextSize = 9,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 62, Parent = profScroll,
+	})
+
+	local function makeMiniToggle(labelText, initVal, onToggle)
+		local state = initVal == true
+		local row = newInst("TextButton", {
+			Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C.bgRowTop, BorderSizePixel = 0,
+			AutoButtonColor = false, Text = "", ZIndex = 62, Parent = profScroll,
+		})
+		corner(9, row)
+		local rs = stroke(C.rowStroke, 1, row, 0.45)
+		local lbl = newInst("TextLabel", {
+			Size = UDim2.new(1, -54, 1, 0), Position = UDim2.new(0, 10, 0, 0),
+			BackgroundTransparency = 1, Text = labelText, TextColor3 = C.textLight,
+			Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 63, Parent = row,
+		})
+		local tr = newInst("Frame", {
+			Size = UDim2.fromOffset(34, 18), AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -8, 0.5, 0), BackgroundColor3 = C.toggleOff, BorderSizePixel = 0,
+			ZIndex = 63, Parent = row,
+		})
+		corner(99, tr)
+		local ts = stroke(C.rowStroke, 1, tr, 0.4)
+		local kn = newInst("Frame", {
+			Size = UDim2.fromOffset(14, 12), AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 3, 0.5, 0), BackgroundColor3 = C.toggleKnobOff, BorderSizePixel = 0,
+			ZIndex = 64, Parent = tr,
+		})
+		corner(99, kn)
+		local function paint(v, instant)
+			local pos = v and UDim2.new(0, 17, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+			local tbg = v and C.accentFade or C.toggleOff
+			local kbg = v and C.accent or C.toggleKnobOff
+			local sc = v and C.accent or C.rowStroke
+			if instant then
+				kn.Position = pos; kn.BackgroundColor3 = kbg; tr.BackgroundColor3 = tbg; ts.Color = sc
+			else
+				tw(kn, { Position = pos, BackgroundColor3 = kbg }, 0.22)
+				tw(tr, { BackgroundColor3 = tbg }, 0.22)
+				tw(ts, { Color = sc }, 0.22)
+			end
+		end
+		paint(state, true)
+		onTheme(function()
+			row.BackgroundColor3 = C.bgRowTop
+			rs.Color = C.rowStroke
+			lbl.TextColor3 = C.textLight
+			paint(state, true)
+		end)
+		row.MouseButton1Click:Connect(function()
+			state = not state
+			paint(state, false)
+			onToggle(state)
+		end)
+		return function(v)
+			state = v == true
+			paint(state, false)
+		end
+	end
+
+	local setMacToggleUI, setFxToggleUI, setGradToggleUI
+	local function setMacButtons(on)
+		macButtons = (on == true)
+		applyMacButtons(true)
+		if setMacToggleUI then setMacToggleUI(macButtons) end
+		if saveSession then saveSession() end
+	end
+	local function setBgEffect(on)
+		bgEffect = (on == true)
+		fxLayer.Visible = bgEffect
+		if setFxToggleUI then setFxToggleUI(bgEffect) end
+		if saveSession then saveSession() end
+	end
+	local function setGradient(on)
+		liveGradient = (on == true)
+		syncLiveGradient()
+		bottomFade.BackgroundColor3 = liveGradient and C.bgBot or C.bgTop
+		if setGradToggleUI then setGradToggleUI(liveGradient) end
+		if saveSession then saveSession() end
+	end
+
+	setMacToggleUI  = makeMiniToggle("MacBook Buttons", macButtons, function(v) setMacButtons(v) end)
+	setFxToggleUI   = makeMiniToggle("Background Effect", bgEffect, function(v) setBgEffect(v) end)
+	setGradToggleUI = makeMiniToggle("Animated Gradient", liveGradient, function(v) setGradient(v) end)
+	makeMiniToggle("Streamer Mode", anonymous, function(v)
+		anonymous = v
+		dispLbl.Text = anonymous and "Anonymous" or me.DisplayName
+		userLbl.Text = anonymous and "@hidden" or ("@" .. me.Name)
+	end)
 
 	-- Theme quick picker
 	local themeRowTitle = newInst("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
 		Text = "THEME", TextColor3 = C.textDim, Font = Enum.Font.GothamBold, TextSize = 9,
-		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 62, Parent = profilePanel,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 62, Parent = profScroll,
 	})
 	local themeGrid = newInst("Frame", {
-		Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1, ZIndex = 62, Parent = profilePanel,
+		Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1, ZIndex = 62, Parent = profScroll,
 	})
-	local tGridLayout = newInst("UIGridLayout", {
+	newInst("UIGridLayout", {
 		CellSize = UDim2.new(0.333, -4, 0, 23),
 		CellPadding = UDim2.fromOffset(5, 5),
 		SortOrder = Enum.SortOrder.LayoutOrder,
@@ -2159,11 +2579,11 @@ function AurixUI:CreateWindow(cfg)
 	local scaleRowTitle = newInst("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
 		Text = "UI SCALE", TextColor3 = C.textDim, Font = Enum.Font.GothamBold, TextSize = 9,
-		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 62, Parent = profilePanel,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 62, Parent = profScroll,
 	})
-	local scaleRow = newInst("Frame", { Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, ZIndex = 62, Parent = profilePanel })
+	local scaleRow = newInst("Frame", { Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, ZIndex = 62, Parent = profScroll })
 	local scaleReadout = newInst("TextLabel", {
-		Size = UDim2.new(0, 72, 1, 0), Position = UDim2.new(0.5, -36, 0, 0),
+		Size = UDim2.new(0, 76, 1, 0), Position = UDim2.new(0.5, -38, 0, 0),
 		BackgroundTransparency = 1, Text = manualScale and (math.floor(uiScale * 100 + 0.5) .. "%") or "Auto",
 		TextColor3 = C.textMain, Font = Enum.Font.GothamBold, TextSize = 11, ZIndex = 63, Parent = scaleRow,
 	})
@@ -2202,26 +2622,10 @@ function AurixUI:CreateWindow(cfg)
 		if saveSession then saveSession() end
 	end)
 
-	-- Anonymous toggle + clock
-	local anonBtn = newInst("TextButton", {
-		Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = C.bgRowTop, BorderSizePixel = 0,
-		AutoButtonColor = false, Text = "Streamer Mode: Off", TextColor3 = C.textLight,
-		Font = Enum.Font.GothamMedium, TextSize = 11, ZIndex = 62, Parent = profilePanel,
-	})
-	corner(8, anonBtn)
-	local anonStroke = stroke(C.rowStroke, 1, anonBtn, 0.35)
-	anonBtn.MouseButton1Click:Connect(function()
-		anonymous = not anonymous
-		anonBtn.Text = anonymous and "Streamer Mode: On" or "Streamer Mode: Off"
-		dispLbl.Text = anonymous and "Anonymous" or me.DisplayName
-		userLbl.Text = anonymous and "@hidden" or ("@" .. me.Name)
-		tw(anonStroke, { Color = anonymous and C.accent or C.rowStroke }, 0.16)
-	end)
-
 	local clockLbl = newInst("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
 		Text = "", TextColor3 = C.accent, Font = Enum.Font.GothamBold, TextSize = 12,
-		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 62, Parent = profilePanel,
+		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 62, Parent = profScroll,
 	})
 	task.spawn(function()
 		while not destroyed and clockLbl.Parent do
@@ -2239,16 +2643,15 @@ function AurixUI:CreateWindow(cfg)
 		profGrad.Color = ColorSequence.new(C.bgTop, C.bgBot)
 		profPanelStroke.Color = C.surfaceStroke
 		profPanelStroke.Transparency = C.strokeTrans
+		profScroll.ScrollBarImageColor3 = C.accentDim
 		pAvaBg.BackgroundColor3 = C.bgRowTop
 		dispLbl.TextColor3 = C.textMain
 		userLbl.TextColor3 = C.textDim
 		metaLbl.TextColor3 = C.textDim
+		settingsRowTitle.TextColor3 = C.textDim
 		themeRowTitle.TextColor3 = C.textDim
 		scaleRowTitle.TextColor3 = C.textDim
 		scaleReadout.TextColor3 = C.textMain
-		anonBtn.BackgroundColor3 = C.bgRowTop
-		anonBtn.TextColor3 = C.textLight
-		anonStroke.Color = anonymous and C.accent or C.rowStroke
 		clockLbl.TextColor3 = C.accent
 		for k, info in pairs(themeChips) do
 			info.stroke.Transparency = (k == currentTheme) and 0 or 0.75
@@ -2258,8 +2661,8 @@ function AurixUI:CreateWindow(cfg)
 	local function closeProfile()
 		if not profileOpen then return end
 		profileOpen = false
-		tw(profilePanel, { Size = UDim2.fromOffset(252, 0), BackgroundTransparency = 1 }, 0.2)
-		task.delay(0.22, function() if not profileOpen then profilePanel.Visible = false end end)
+		tw(profilePanel, { Size = UDim2.fromOffset(264, 0), BackgroundTransparency = 1 }, 0.22)
+		task.delay(0.24, function() if not profileOpen then profilePanel.Visible = false end end)
 	end
 	local function openProfile()
 		if profileOpen or minimized then return end
@@ -2267,9 +2670,9 @@ function AurixUI:CreateWindow(cfg)
 		refreshScaleReadout()
 		profilePanel.Visible = true
 		profilePanel.BackgroundTransparency = 1
-		profilePanel.Size = UDim2.fromOffset(252, 0)
-		local targetH = math.min(profList.AbsoluteContentSize.Y + 26, math.max(180, winH - TOPBAR_H - 16))
-		tw(profilePanel, { Size = UDim2.fromOffset(252, targetH), BackgroundTransparency = 0 }, 0.32)
+		profilePanel.Size = UDim2.fromOffset(264, 0)
+		local targetH = math.min(profList.AbsoluteContentSize.Y + 26, math.max(170, winH - TOPBAR_H - 14))
+		tw(profilePanel, { Size = UDim2.fromOffset(264, targetH), BackgroundTransparency = 0 }, 0.34)
 	end
 	profBtn.MouseButton1Click:Connect(function()
 		if profileOpen then closeProfile() else openProfile() end
@@ -2284,14 +2687,14 @@ function AurixUI:CreateWindow(cfg)
 			if searchOpen then closeSearch() end
 			if profileOpen then closeProfile() end
 			tabBar.Visible = false
-			bodyFrame.Visible = false
+			pagesWrap.Visible = false
 			bottomFade.Visible = false
 			titleWrap.Visible = false
 			searchBtn.Visible = false
 			profBtn.Visible = false
 			compactBar.Visible = true
 			minBtn.Text = "+"
-			tw(win, { Size = UDim2.fromOffset(winW, TOPBAR_H) }, 0.32)
+			tw(win, { Size = UDim2.fromOffset(winW, TOPBAR_H) }, 0.34)
 			syncDecor(false)
 		else
 			compactBar.Visible = false
@@ -2299,15 +2702,16 @@ function AurixUI:CreateWindow(cfg)
 			searchBtn.Visible = true
 			profBtn.Visible = true
 			tabBar.Visible = true
-			bodyFrame.Visible = true
+			pagesWrap.Visible = true
 			bottomFade.Visible = true
 			minBtn.Text = "-"
-			tw(win, { Size = UDim2.fromOffset(winW, winH) }, 0.36)
+			tw(win, { Size = UDim2.fromOffset(winW, winH) }, 0.38)
 			syncDecor(false)
 		end
 		if saveSession then saveSession() end
 	end
 	minBtn.MouseButton1Click:Connect(function() setCompact(not minimized) end)
+	dotYellow.MouseButton1Click:Connect(function() setCompact(not minimized) end)
 
 	-- ==== COLLAPSED RESTORE PILL (Draggable on mobile, Rayfield Gen2 style) ====
 	local showPrompt = newInst("TextButton", {
@@ -2464,8 +2868,7 @@ function AurixUI:CreateWindow(cfg)
 		showPrompt.Position = UDim2.fromOffset(x, y)
 	end))
 
-	hideBtn.MouseButton1Click:Connect(hideUI)
-	closeBtn.MouseButton1Click:Connect(function()
+	local function requestClose()
 		buildConfirmDialog(screen, function()
 			tw(win, { Size = UDim2.fromOffset(260, 0), BackgroundTransparency = 1 }, 0.25)
 			tw(shadowFrame, { BackgroundTransparency = 1 }, 0.22)
@@ -2475,7 +2878,11 @@ function AurixUI:CreateWindow(cfg)
 				if screen.Parent then screen:Destroy() end
 			end)
 		end)
-	end)
+	end
+	hideBtn.MouseButton1Click:Connect(hideUI)
+	dotGreen.MouseButton1Click:Connect(hideUI)
+	closeBtn.MouseButton1Click:Connect(requestClose)
+	dotRed.MouseButton1Click:Connect(requestClose)
 
 	-- debounced session save
 	local sessionQueued = false
@@ -2493,6 +2900,7 @@ function AurixUI:CreateWindow(cfg)
 					tab = activeTab and tostring(activeTab.tabName) or nil,
 					scale = uiScale, manualScale = manualScale ~= nil,
 					theme = currentTheme, compact = minimized,
+					macButtons = macButtons, bgEffect = bgEffect, liveGradient = liveGradient,
 				}))
 			end)
 		end)
@@ -2826,16 +3234,31 @@ function AurixUI:CreateWindow(cfg)
 			syncBadge()
 		end
 
-		local tabContainer = newInst("Frame", {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
+		-- dedicated scrolling page inside UIPageLayout (smooth horizontal slide transitions)
+		local tabPage = newInst("ScrollingFrame", {
+			Name = tabName,
+			Size = UDim2.fromScale(1, 1),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Visible = false,
+			ScrollBarThickness = 3,
+			ScrollBarImageColor3 = C.accentDim,
+			ScrollBarImageTransparency = 0.45,
+			CanvasSize = UDim2.new(0, 0, 0, 0),
+			ClipsDescendants = true,
+			LayoutOrder = tabCount,
 			ZIndex = 3,
-			Parent = bodyFrame,
+			Parent = pagesWrap,
 		})
-		listLayout(tabContainer, 8)
+		padding(6, 26, 14, 14, tabPage)
+		local pageLayout = listLayout(tabPage, 8)
+		pageLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			tabPage.CanvasSize = UDim2.new(0, 0, 0, pageLayout.AbsoluteContentSize.Y + 34)
+		end)
+		onTheme(function()
+			tabPage.ScrollBarImageColor3 = C.accentDim
+		end)
+		local tabContainer = tabPage
+		local tabBtnScale = newInst("UIScale", { Scale = 1, Parent = tabBtn })
 
 		-- compact topbar chip
 		local cbtn = newInst("TextButton", {
@@ -2858,7 +3281,9 @@ function AurixUI:CreateWindow(cfg)
 
 		local entry = {
 			container = tabContainer,
+			page = tabPage,
 			btn = tabBtn,
+			btnScale = tabBtnScale,
 			grad = tabGrad,
 			stroke = tabStroke,
 			label = tabLabel,
@@ -2870,18 +3295,18 @@ function AurixUI:CreateWindow(cfg)
 		local function paintTab(e, selected)
 			if selected then
 				e.grad.Color = ColorSequence.new(C.tabSelTop, C.tabSelBot)
-				tw(e.btn, { BackgroundTransparency = 0 }, 0.24)
-				tw(e.stroke, { Color = C.accent, Transparency = 0.25 }, 0.24)
-				tw(e.label, { TextColor3 = C.tabSelText }, 0.2)
-				if e.icon then tw(e.icon, { ImageColor3 = C.tabSelText }, 0.2) end
-				tw(e.cbtn, { BackgroundColor3 = C.accent, BackgroundTransparency = 0.15, TextColor3 = C.tabSelText }, 0.2)
+				tw(e.btn, { BackgroundTransparency = 0 }, 0.28)
+				tw(e.stroke, { Color = C.accent, Transparency = 0.2 }, 0.28)
+				tw(e.label, { TextColor3 = C.tabSelText }, 0.22)
+				if e.icon then tw(e.icon, { ImageColor3 = C.tabSelText }, 0.22) end
+				tw(e.cbtn, { BackgroundColor3 = C.accent, BackgroundTransparency = 0.15, TextColor3 = C.tabSelText }, 0.22)
 			else
 				e.grad.Color = ColorSequence.new(C.tabBg, C.tabBg)
-				tw(e.btn, { BackgroundTransparency = C.isLight and 0.15 or 0.45 }, 0.24)
-				tw(e.stroke, { Color = C.rowStroke, Transparency = 0.55 }, 0.24)
-				tw(e.label, { TextColor3 = C.textLight }, 0.2)
-				if e.icon then tw(e.icon, { ImageColor3 = C.textLight }, 0.2) end
-				tw(e.cbtn, { BackgroundColor3 = C.tabBg, BackgroundTransparency = 0.55, TextColor3 = C.textDim }, 0.2)
+				tw(e.btn, { BackgroundTransparency = C.isLight and 0.15 or 0.45 }, 0.28)
+				tw(e.stroke, { Color = C.rowStroke, Transparency = 0.55 }, 0.28)
+				tw(e.label, { TextColor3 = C.textLight }, 0.22)
+				if e.icon then tw(e.icon, { ImageColor3 = C.textLight }, 0.22) end
+				tw(e.cbtn, { BackgroundColor3 = C.tabBg, BackgroundTransparency = 0.55, TextColor3 = C.textDim }, 0.22)
 			end
 		end
 
@@ -2892,35 +3317,52 @@ function AurixUI:CreateWindow(cfg)
 
 		tabBtn.MouseEnter:Connect(function()
 			if activeTab ~= entry then
-				tw(tabBtn, { BackgroundTransparency = 0.18 }, 0.15)
-				tw(tabLabel, { TextColor3 = C.textMain }, 0.15)
+				tw(tabBtn, { BackgroundTransparency = 0.16 }, 0.18)
+				tw(tabLabel, { TextColor3 = C.textMain }, 0.18)
 			end
 		end)
 		tabBtn.MouseLeave:Connect(function()
 			if activeTab ~= entry then
-				tw(tabBtn, { BackgroundTransparency = C.isLight and 0.15 or 0.45 }, 0.18)
-				tw(tabLabel, { TextColor3 = C.textLight }, 0.18)
+				tw(tabBtn, { BackgroundTransparency = C.isLight and 0.15 or 0.45 }, 0.2)
+				tw(tabLabel, { TextColor3 = C.textLight }, 0.2)
 			end
 		end)
 
-		local function activate()
-			if activeTab and activeTab ~= entry then
-				activeTab.container.Visible = false
-				paintTab(activeTab, false)
+		local function activate(instant)
+			local prev = activeTab
+			if prev and prev ~= entry then
+				paintTab(prev, false)
 			end
 			activeTab = entry
 			activeCompact = cbtn
-			tabContainer.Visible = true
-			bodyFrame.CanvasPosition = Vector2.new(0, 0)
 			paintTab(entry, true)
 			badge.BackgroundColor3 = C.tabSelText
+
+			if instant then
+				pagesLayout.Animated = false
+				pcall(function() pagesLayout:JumpTo(tabPage) end)
+				pagesLayout.Animated = true
+			else
+				tabBtnScale.Scale = 0.93
+				spring(tabBtnScale, { Scale = 1 }, 0.28)
+				pagesLayout.Animated = true
+				pcall(function() pagesLayout:JumpTo(tabPage) end)
+				-- keep active pill scrolled into view on mobile
+				task.defer(function()
+					if tabBar.Parent and tabBtn.Parent then
+						local relX = tabBtn.AbsolutePosition.X - tabBar.AbsolutePosition.X + tabBar.CanvasPosition.X
+						local centerX = math.max(0, relX - (tabBar.AbsoluteSize.X - tabBtn.AbsoluteSize.X) * 0.5)
+						tw(tabBar, { CanvasPosition = Vector2.new(centerX, 0) }, 0.3)
+					end
+				end)
+			end
 			if searchOpen then closeSearch() end
 			if saveSession then task.defer(saveSession) end
 		end
 
-		if tabCount == 1 then activate() else paintTab(entry, false) end
-		tabBtn.MouseButton1Click:Connect(activate)
-		cbtn.MouseButton1Click:Connect(activate)
+		if tabCount == 1 then activate(true) else paintTab(entry, false) end
+		tabBtn.MouseButton1Click:Connect(function() activate(false) end)
+		cbtn.MouseButton1Click:Connect(function() activate(false) end)
 
 		local tabObj = {}
 		entry.changed = syncBadge
@@ -3048,12 +3490,17 @@ function AurixUI:CreateWindow(cfg)
 				local kBg = v and C.accent or C.toggleKnobOff
 				local sCol = v and C.accent or C.rowStroke
 				if instant then
-					thumb.Position = tPos; thumb.BackgroundColor3 = kBg
+					thumb.Position = tPos; thumb.Size = UDim2.fromOffset(22, 16); thumb.BackgroundColor3 = kBg
 					track.BackgroundColor3 = tBg; tStroke.Color = sCol
 				else
-					tw(thumb, { Position = tPos, BackgroundColor3 = kBg }, 0.24)
-					tw(track, { BackgroundColor3 = tBg }, 0.24)
-					tw(tStroke, { Color = sCol, Transparency = v and 0.1 or 0.35 }, 0.24)
+					-- elastic pill squish while sliding (Rayfield Gen2 feel)
+					tw(thumb, { Size = UDim2.fromOffset(28, 15) }, 0.09, Enum.EasingStyle.Quad)
+					tw(thumb, { Position = tPos, BackgroundColor3 = kBg }, 0.28)
+					task.delay(0.09, function()
+						if thumb.Parent then spring(thumb, { Size = UDim2.fromOffset(22, 16) }, 0.26) end
+					end)
+					tw(track, { BackgroundColor3 = tBg }, 0.26)
+					tw(tStroke, { Color = sCol, Transparency = v and 0.1 or 0.35 }, 0.26)
 				end
 			end
 
@@ -3315,7 +3762,11 @@ function AurixUI:CreateWindow(cfg)
 				if cfg2.Flag then flags[cfg2.Flag] = v end
 				local span = math.max(range[2] - range[1], 1e-6)
 				local pct = math.clamp((v - range[1]) / span, 0, 1)
-				fill.Size = UDim2.new(pct, 0, 1, 0)
+				if fire then
+					tw(fill, { Size = UDim2.new(pct, 0, 1, 0) }, 0.12, Enum.EasingStyle.Quint)
+				else
+					fill.Size = UDim2.new(pct, 0, 1, 0)
+				end
 				if not editing then valBox.Text = fmt(v) end
 				if fire then
 					if cfg2.Callback then pcall(cfg2.Callback, v) end
@@ -4513,6 +4964,9 @@ function AurixUI:CreateWindow(cfg)
 	function winObj:GetHUD() return hudCtrl end
 	function winObj:SetCompact(on) setCompact(on == true) end
 	function winObj:IsCompact() return minimized end
+	function winObj:SetMacButtons(on) setMacButtons(on == true) end
+	function winObj:SetBackgroundEffect(on) setBgEffect(on == true) end
+	function winObj:SetGradient(on) setGradient(on == true) end
 	function winObj:SetVisibility(visible)
 		if visible then showUI() else hideUI() end
 	end
