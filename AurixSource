@@ -649,64 +649,75 @@ local function notify(title, content, col, dur)
 
 	local card = newInst("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
-		Position = UDim2.new(0, 76, 0, 0),
+		Position = UDim2.new(0, 80, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		ZIndex = 121,
+		ClipsDescendants = false,
+		ZIndex = 122,
 		Parent = slot,
 	})
-	corner(14, card)
-	vGrad(card, C.bgTop, C.bgBot, 118)
+	corner(16, card)
+	vGrad(card, C.bgTop, C.bgBot, 125)
 	local cardStroke = stroke(C.surfaceStroke, 1, card, 1)
-	local cardScale = newInst("UIScale", { Scale = 0.94, Parent = card })
+	local cardScale = newInst("UIScale", { Scale = 0.95, Parent = card })
 
 	local inner = newInst("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
-		ZIndex = 122,
+		ZIndex = 123,
 		Parent = card,
 	})
-	padding(11, 14, 12, 12, inner)
+	padding(12, 18, 13, 13, inner)
 
 	local iconBox = newInst("Frame", {
-		Size = UDim2.fromOffset(30, 30),
-		Position = UDim2.new(0, 0, 0.5, -15),
+		Size = UDim2.fromOffset(32, 32),
+		Position = UDim2.new(0, 0, 0.5, -16),
 		BackgroundColor3 = col,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ZIndex = 123,
+		ZIndex = 124,
 		Parent = inner,
 	})
-	corner(10, iconBox)
+	corner(11, iconBox)
 	local iconStroke = stroke(col, 1, iconBox, 1)
+	local iconRing = newInst("Frame", {
+		Size = UDim2.fromOffset(14, 14),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 125,
+		Parent = iconBox,
+	})
+	corner(99, iconRing)
+	local iconRingStroke = stroke(col, 1.5, iconRing, 1)
 	local iconDot = newInst("Frame", {
-		Size = UDim2.fromOffset(10, 10),
+		Size = UDim2.fromOffset(6, 6),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		BackgroundColor3 = col,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ZIndex = 124,
-		Parent = iconBox,
+		ZIndex = 126,
+		Parent = iconRing,
 	})
 	corner(99, iconDot)
 
 	local wrap = newInst("Frame", {
-		Size = UDim2.new(1, -42, 0, 0),
-		Position = UDim2.new(0, 40, 0, 0),
+		Size = UDim2.new(1, -46, 0, 0),
+		Position = UDim2.new(0, 42, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
-		ZIndex = 123,
+		ZIndex = 124,
 		Parent = inner,
 	})
-	listLayout(wrap, 2)
+	listLayout(wrap, 3)
 
 	local titleLbl = newInst("TextLabel", {
-		Size = UDim2.new(1, -26, 0, 17),
+		Size = UDim2.new(1, -30, 0, 17),
 		BackgroundTransparency = 1,
 		Text = title,
 		TextColor3 = C.textMain,
@@ -715,7 +726,7 @@ local function notify(title, content, col, dur)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Font = Enum.Font.GothamBold,
 		TextSize = 13,
-		ZIndex = 124,
+		ZIndex = 125,
 		Parent = wrap,
 	})
 
@@ -732,69 +743,101 @@ local function notify(title, content, col, dur)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Font = Enum.Font.Gotham,
 			TextSize = 11,
-			ZIndex = 124,
+			ZIndex = 125,
 			Parent = wrap,
 		})
 	end
 
-	local countLbl = newInst("TextLabel", {
-		Size = UDim2.fromOffset(26, 16),
-		Position = UDim2.new(1, -26, 0, 0),
-		BackgroundTransparency = 1,
-		Text = "",
-		TextColor3 = col,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		Font = Enum.Font.GothamBold,
-		TextSize = 10,
-		ZIndex = 125,
-		Visible = false,
-		Parent = inner,
-	})
-
-	-- animated countdown bar along the bottom edge
-	local timerTrack = newInst("Frame", {
-		Size = UDim2.new(1, 0, 0, 2),
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.fromScale(0, 1),
+	local countPill = newInst("Frame", {
+		Size = UDim2.fromOffset(26, 17),
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 0),
 		BackgroundColor3 = col,
 		BackgroundTransparency = 0.82,
 		BorderSizePixel = 0,
-		ZIndex = 124,
+		Visible = false,
+		ZIndex = 126,
+		Parent = inner,
+	})
+	corner(99, countPill)
+	local countLbl = newInst("TextLabel", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = "",
+		TextColor3 = col,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Font = Enum.Font.GothamBold,
+		TextSize = 10,
+		ZIndex = 127,
+		Parent = countPill,
+	})
+
+	local closeHint = newInst("TextLabel", {
+		Size = UDim2.fromOffset(16, 16),
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "x",
+		TextColor3 = C.textDim,
+		TextTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		TextSize = 11,
+		ZIndex = 126,
+		Parent = inner,
+	})
+
+	-- inset curved pill countdown bar (stays cleanly inside the 16px rounded card corners)
+	local timerTrack = newInst("Frame", {
+		Size = UDim2.new(1, -28, 0, 3),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -7),
+		BackgroundColor3 = C.sliderTrack,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 125,
 		Parent = card,
 	})
+	corner(99, timerTrack)
 	local timerFill = newInst("Frame", {
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = col,
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ZIndex = 125,
+		ZIndex = 126,
 		Parent = timerTrack,
 	})
+	corner(99, timerFill)
+	vGrad(timerFill, col:Lerp(Color3.new(1, 1, 1), 0.18), col, 0)
 
 	local clickDismiss = newInst("TextButton", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		Text = "",
-		ZIndex = 126,
+		ZIndex = 128,
 		Parent = card,
 	})
 
 	local dismissed = false
 	local timerGen = 0
-	local entry = { slot = slot, frame = card, countLbl = countLbl }
+	local entry = { slot = slot, frame = card, countLbl = countLbl, countPill = countPill }
 
 	local function dismiss(fast)
 		if dismissed then return end
 		dismissed = true
 		local d = fast and 0.16 or 0.28
-		tw(card, { Position = UDim2.new(0, 84, 0, 0), BackgroundTransparency = 1 }, d, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		tw(cardScale, { Scale = 0.92 }, d)
+		tw(card, { Position = UDim2.new(0, 88, 0, 0), BackgroundTransparency = 1 }, d, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+		tw(cardScale, { Scale = 0.93 }, d)
 		tw(cardStroke, { Transparency = 1 }, d)
 		tw(iconBox, { BackgroundTransparency = 1 }, d * 0.8)
 		tw(iconStroke, { Transparency = 1 }, d * 0.8)
+		tw(iconRingStroke, { Transparency = 1 }, d * 0.8)
 		tw(iconDot, { BackgroundTransparency = 1 }, d * 0.8)
 		tw(titleLbl, { TextTransparency = 1 }, d * 0.8)
 		if bodyLbl then tw(bodyLbl, { TextTransparency = 1 }, d * 0.8) end
+		tw(timerTrack, { BackgroundTransparency = 1 }, d * 0.7)
 		tw(timerFill, { BackgroundTransparency = 1 }, d * 0.7)
+		tw(closeHint, { TextTransparency = 1 }, d * 0.6)
 		task.delay(d * 0.65, function()
 			if slot.Parent then
 				slot.AutomaticSize = Enum.AutomaticSize.None
@@ -823,6 +866,8 @@ local function notify(title, content, col, dur)
 
 	entry.dismiss = dismiss
 	entry.bump = function()
+		countPill.Visible = true
+		closeHint.Visible = false
 		spring(cardScale, { Scale = 1.04 }, 0.14)
 		task.delay(0.14, function()
 			if cardScale.Parent then spring(cardScale, { Scale = 1 }, 0.22) end
@@ -831,23 +876,31 @@ local function notify(title, content, col, dur)
 	end
 
 	clickDismiss.MouseButton1Click:Connect(function() dismiss(true) end)
-	clickDismiss.MouseEnter:Connect(function() tw(cardStroke, { Color = col, Transparency = 0.25 }, 0.16) end)
-	clickDismiss.MouseLeave:Connect(function() tw(cardStroke, { Color = C.surfaceStroke, Transparency = C.isLight and 0.4 or 0.86 }, 0.18) end)
+	clickDismiss.MouseEnter:Connect(function()
+		tw(cardStroke, { Color = col, Transparency = 0.28 }, 0.16)
+		if not countPill.Visible then tw(closeHint, { TextTransparency = 0.25 }, 0.16) end
+	end)
+	clickDismiss.MouseLeave:Connect(function()
+		tw(cardStroke, { Color = C.surfaceStroke, Transparency = C.isLight and 0.38 or 0.84 }, 0.18)
+		tw(closeHint, { TextTransparency = 1 }, 0.16)
+	end)
 
 	table.insert(notifActive, entry)
 	notifDedupe[key] = { entry = entry, count = 1, time = now }
 	table.insert(notifHistory, 1, { title = title, content = content, at = os.time() })
 	while #notifHistory > 20 do table.remove(notifHistory) end
 
-	spring(card, { Position = UDim2.new(0, 0, 0, 0) }, 0.42)
+	tw(card, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = C.isLight and 0.03 or 0.05 }, 0.38)
 	spring(cardScale, { Scale = 1 }, 0.4)
-	tw(card, { BackgroundTransparency = C.isLight and 0.03 or 0.06 }, 0.3)
-	tw(cardStroke, { Transparency = C.isLight and 0.4 or 0.86 }, 0.3)
-	tw(iconBox, { BackgroundTransparency = 0.84 }, 0.32)
-	tw(iconStroke, { Transparency = 0.35 }, 0.32)
+	tw(cardStroke, { Transparency = C.isLight and 0.38 or 0.84 }, 0.32)
+	tw(iconBox, { BackgroundTransparency = 0.86 }, 0.32)
+	tw(iconStroke, { Transparency = 0.45 }, 0.32)
+	tw(iconRingStroke, { Transparency = 0.25 }, 0.32)
 	tw(iconDot, { BackgroundTransparency = 0 }, 0.32)
 	tw(titleLbl, { TextTransparency = 0 }, 0.28)
 	if bodyLbl then tw(bodyLbl, { TextTransparency = 0.18 }, 0.32) end
+	tw(timerTrack, { BackgroundTransparency = 0.35 }, 0.3)
+	tw(timerFill, { BackgroundTransparency = 0 }, 0.3)
 	startTimer()
 end
 
