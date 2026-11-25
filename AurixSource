@@ -1248,40 +1248,114 @@ local function parseRich(txt)
 	return s
 end
 
--- ==== LOADING BANNER (fast, clean Rayfield Gen2 style) ====
+-- ==== LOADING SCREEN (smooth eased progress, rotating ring, shimmer sweep, morph handoff) ====
+local LOAD_SEGS = {
+	{ 0.00, 0.22,  0,  24 },
+	{ 0.22, 0.48, 24,  58 },
+	{ 0.48, 0.74, 58,  84 },
+	{ 0.74, 1.00, 84, 100 },
+}
+local LOAD_STAGES = {
+	{  0, "Initializing" },
+	{ 22, "Applying theme" },
+	{ 56, "Preparing layout" },
+	{ 88, "Ready" },
+}
+local function loadEase(t)
+	if t < 0.5 then return 4 * t * t * t end
+	return 1 - ((-2 * t + 2) ^ 3) / 2
+end
+local function loadProgress(t)
+	for _, s in ipairs(LOAD_SEGS) do
+		if t <= s[2] then
+			local k = math.clamp((t - s[1]) / math.max(s[2] - s[1], 1e-4), 0, 1)
+			return s[3] + (s[4] - s[3]) * loadEase(k)
+		end
+	end
+	return 100
+end
+
 local function showLoadingBanner(screen, cfg, onDone)
 	local loadTitle = cfg.LoadingTitle or cfg.Name or "Aurix Hub"
 	local loadSub = cfg.LoadingSubtitle or "by Aurix Hub"
 
 	local vp = getViewport(screen)
-	local bw = math.min(340, vp.X - 36)
+	local bw = math.min(360, vp.X - 36)
+	local bh = 162
 
-	local banner = newInst("Frame", {
+	local scrim = newInst("Frame", {
 		Name = "AurixLoader",
-		Size = UDim2.fromOffset(bw - 26, 74),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 10),
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(4, 6, 10),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ZIndex = 200,
 		Parent = screen,
 	})
-	corner(18, banner)
-	vGrad(banner, C.bgTop, C.bgBot, 110)
-	local bStroke = stroke(C.surfaceStroke, 1, banner, 1)
 
-	local badge = newInst("Frame", {
-		Size = UDim2.fromOffset(38, 38),
-		Position = UDim2.new(0, 16, 0.5, -19),
+	local halo = newInst("Frame", {
+		Size = UDim2.fromOffset(bw + 24, bh + 24),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 16),
 		BackgroundColor3 = C.accent,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ZIndex = 202,
-		Parent = banner,
+		ZIndex = 200,
+		Parent = scrim,
 	})
-	corner(12, badge)
+	corner(28, halo)
+	local haloScale = newInst("UIScale", { Scale = 0.88, Parent = halo })
+
+	local card = newInst("Frame", {
+		Size = UDim2.fromOffset(bw, bh),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 16),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 201,
+		Parent = scrim,
+	})
+	corner(22, card)
+	local cardGrad = vGrad(card, C.bgTop, C.bgBot:Lerp(C.accentFade, 0.3), 120)
+	local cardStroke = stroke(C.surfaceStroke, 1, card, 1)
+	local cardScale = newInst("UIScale", { Scale = 0.88, Parent = card })
+
+	-- rotating accent ring around the brand mark
+	local ring = newInst("Frame", {
+		Size = UDim2.fromOffset(56, 56),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0, 44, 0, 52),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 202,
+		Parent = card,
+	})
+	corner(99, ring)
+	local ringStroke = stroke(C.accent, 2, ring, 1)
+	local ringGrad = newInst("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.55, 0.92),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Parent = ringStroke,
+	})
+
+	local badge = newInst("Frame", {
+		Size = UDim2.fromOffset(42, 42),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0, 44, 0, 52),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 203,
+		Parent = card,
+	})
+	corner(13, badge)
 	vGrad(badge, C.accent, C.accent2, 135)
+	local badgeScale = newInst("UIScale", { Scale = 0.72, Parent = badge })
 	local badgeLbl = newInst("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -1289,14 +1363,14 @@ local function showLoadingBanner(screen, cfg, onDone)
 		TextColor3 = C.tabSelText,
 		TextTransparency = 1,
 		Font = Enum.Font.GothamBlack,
-		TextSize = 18,
-		ZIndex = 203,
+		TextSize = 20,
+		ZIndex = 204,
 		Parent = badge,
 	})
 
 	local titleLbl = newInst("TextLabel", {
-		Size = UDim2.new(1, -78, 0, 18),
-		Position = UDim2.new(0, 64, 0, 17),
+		Size = UDim2.new(1, -96, 0, 22),
+		Position = UDim2.new(0, 82, 0, 38),
 		BackgroundTransparency = 1,
 		Text = loadTitle,
 		TextColor3 = C.textMain,
@@ -1304,13 +1378,13 @@ local function showLoadingBanner(screen, cfg, onDone)
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Font = Enum.Font.GothamBold,
-		TextSize = 14,
-		ZIndex = 202,
-		Parent = banner,
+		TextSize = 16,
+		ZIndex = 203,
+		Parent = card,
 	})
 	local subLbl = newInst("TextLabel", {
-		Size = UDim2.new(1, -78, 0, 14),
-		Position = UDim2.new(0, 64, 0, 38),
+		Size = UDim2.new(1, -96, 0, 15),
+		Position = UDim2.new(0, 82, 0, 62),
 		BackgroundTransparency = 1,
 		Text = loadSub,
 		TextColor3 = C.textDim,
@@ -1319,60 +1393,169 @@ local function showLoadingBanner(screen, cfg, onDone)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Font = Enum.Font.Gotham,
 		TextSize = 11,
-		ZIndex = 202,
-		Parent = banner,
+		ZIndex = 203,
+		Parent = card,
 	})
 
+	-- progress bar with gradient + sweeping shimmer
 	local barTrack = newInst("Frame", {
-		Size = UDim2.new(1, -32, 0, 3),
-		Position = UDim2.new(0, 16, 1, -10),
+		Size = UDim2.new(1, -36, 0, 6),
+		Position = UDim2.new(0, 18, 0, 108),
 		BackgroundColor3 = C.sliderTrack,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ZIndex = 202,
-		Parent = banner,
+		ClipsDescendants = true,
+		ZIndex = 203,
+		Parent = card,
 	})
 	corner(99, barTrack)
+
 	local barFill = newInst("Frame", {
 		Size = UDim2.new(0, 0, 1, 0),
-		BackgroundColor3 = C.accent,
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ZIndex = 203,
+		ClipsDescendants = true,
+		ZIndex = 204,
 		Parent = barTrack,
 	})
 	corner(99, barFill)
+	vGrad(barFill, C.accent2, C.accent, 0)
 
-	tw(banner, { Size = UDim2.fromOffset(bw, 82), BackgroundTransparency = 0, Position = UDim2.new(0.5, 0, 0.5, 0) }, 0.42)
-	tw(bStroke, { Transparency = C.strokeTrans }, 0.35)
-	tw(badge, { BackgroundTransparency = 0 }, 0.35)
-	tw(badgeLbl, { TextTransparency = 0 }, 0.35)
-	tw(titleLbl, { TextTransparency = 0 }, 0.35)
-	tw(subLbl, { TextTransparency = 0 }, 0.38)
-	tw(barTrack, { BackgroundTransparency = 0 }, 0.35)
-	tw(barFill, { Size = UDim2.new(1, 0, 1, 0) }, 0.78, Enum.EasingStyle.Quint)
+	local shine = newInst("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		ZIndex = 205,
+		Parent = barFill,
+	})
+	local shineGrad = newInst("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 0.38),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Offset = Vector2.new(-1, 0),
+		Parent = shine,
+	})
 
+	local stageLbl = newInst("TextLabel", {
+		Size = UDim2.new(1, -92, 0, 16),
+		Position = UDim2.new(0, 18, 0, 124),
+		BackgroundTransparency = 1,
+		Text = "Initializing",
+		TextColor3 = C.textDim,
+		TextTransparency = 1,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Font = Enum.Font.GothamMedium,
+		TextSize = 11,
+		ZIndex = 203,
+		Parent = card,
+	})
+	local pctLbl = newInst("TextLabel", {
+		Size = UDim2.fromOffset(52, 16),
+		Position = UDim2.new(1, -70, 0, 124),
+		BackgroundTransparency = 1,
+		Text = "0%",
+		TextColor3 = C.accent,
+		TextTransparency = 1,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Font = Enum.Font.GothamBold,
+		TextSize = 11,
+		ZIndex = 203,
+		Parent = card,
+	})
+
+	-- staggered smooth entrance
+	tw(scrim, { BackgroundTransparency = 0.42 }, 0.36)
+	spring(cardScale, { Scale = 1 }, 0.46)
+	spring(haloScale, { Scale = 1 }, 0.46)
+	tw(card, { Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 0.02 }, 0.44)
+	tw(halo, { Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = C.isLight and 0.90 or 0.86 }, 0.46)
+	tw(cardStroke, { Transparency = C.strokeTrans }, 0.4)
+	task.delay(0.06, function()
+		if not card.Parent then return end
+		spring(badgeScale, { Scale = 1 }, 0.42)
+		tw(badge, { BackgroundTransparency = 0 }, 0.32)
+		tw(badgeLbl, { TextTransparency = 0 }, 0.32)
+		tw(ringStroke, { Transparency = 0.25 }, 0.36)
+		tw(titleLbl, { Position = UDim2.new(0, 82, 0, 32), TextTransparency = 0 }, 0.36)
+	end)
+	task.delay(0.12, function()
+		if not card.Parent then return end
+		tw(subLbl, { Position = UDim2.new(0, 82, 0, 56), TextTransparency = 0 }, 0.36)
+		tw(barTrack, { BackgroundTransparency = 0 }, 0.32)
+		tw(barFill, { BackgroundTransparency = 0 }, 0.32)
+		tw(stageLbl, { TextTransparency = 0 }, 0.32)
+		tw(pctLbl, { TextTransparency = 0 }, 0.32)
+	end)
+
+	local DUR = 1.65
+	local elapsed = 0
+	local fast = false
 	local done = false
+	local curStage = ""
+	local shinePhase = -1
+	local stepConn = nil
+
 	local function finish()
 		if done then return end
 		done = true
-		tw(banner, { Size = UDim2.fromOffset(bw - 20, 66), BackgroundTransparency = 1 }, 0.25)
-		tw(bStroke, { Transparency = 1 }, 0.22)
-		tw(badge, { BackgroundTransparency = 1 }, 0.2)
-		tw(badgeLbl, { TextTransparency = 1 }, 0.2)
-		tw(titleLbl, { TextTransparency = 1 }, 0.2)
-		tw(subLbl, { TextTransparency = 1 }, 0.2)
-		tw(barTrack, { BackgroundTransparency = 1 }, 0.2)
-		tw(barFill, { BackgroundTransparency = 1 }, 0.2)
-		if onDone then task.delay(0.12, onDone) end
-		task.delay(0.28, function() if banner.Parent then banner:Destroy() end end)
+		if stepConn then pcall(function() stepConn:Disconnect() end); stepConn = nil end
+		barFill.Size = UDim2.fromScale(1, 1)
+		pctLbl.Text = "100%"
+		stageLbl.Text = "Ready"
+		task.delay(0.16, function()
+			tw(scrim, { BackgroundTransparency = 1 }, 0.38)
+			tw(card, { Position = UDim2.new(0.5, 0, 0.5, -14), BackgroundTransparency = 1 }, 0.34)
+			tw(halo, { Position = UDim2.new(0.5, 0, 0.5, -14), BackgroundTransparency = 1 }, 0.34)
+			tw(cardScale, { Scale = 0.92 }, 0.34)
+			tw(haloScale, { Scale = 0.92 }, 0.34)
+			tw(cardStroke, { Transparency = 1 }, 0.28)
+			tw(ringStroke, { Transparency = 1 }, 0.24)
+			tw(badge, { BackgroundTransparency = 1 }, 0.24)
+			tw(badgeLbl, { TextTransparency = 1 }, 0.24)
+			tw(titleLbl, { TextTransparency = 1 }, 0.22)
+			tw(subLbl, { TextTransparency = 1 }, 0.22)
+			tw(barTrack, { BackgroundTransparency = 1 }, 0.22)
+			tw(barFill, { BackgroundTransparency = 1 }, 0.22)
+			tw(stageLbl, { TextTransparency = 1 }, 0.22)
+			tw(pctLbl, { TextTransparency = 1 }, 0.22)
+			if onDone then task.delay(0.14, onDone) end
+			task.delay(0.42, function() if scrim.Parent then scrim:Destroy() end end)
+		end)
 	end
 
-	banner.InputBegan:Connect(function(i)
+	scrim.InputBegan:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-			finish()
+			fast = true
 		end
 	end)
-	task.delay(0.88, finish)
+
+	stepConn = RunService.RenderStepped:Connect(function(dt)
+		if done or not scrim.Parent then
+			if stepConn then pcall(function() stepConn:Disconnect() end); stepConn = nil end
+			return
+		end
+		ring.Rotation = (ring.Rotation + dt * 210) % 360
+		shinePhase = shinePhase + dt * 1.6
+		if shinePhase > 1.2 then shinePhase = -1.2 end
+		shineGrad.Offset = Vector2.new(shinePhase, 0)
+		cardGrad.Rotation = 115 + math.sin(os.clock() * 1.4) * 18
+
+		elapsed = math.min(1, elapsed + (dt / DUR) * (fast and 3.8 or 1))
+		local p = loadProgress(elapsed)
+		barFill.Size = UDim2.new(p / 100, 0, 1, 0)
+		pctLbl.Text = tostring(math.floor(p + 0.5)) .. "%"
+		local lbl = LOAD_STAGES[1][2]
+		for i = #LOAD_STAGES, 1, -1 do
+			if p >= LOAD_STAGES[i][1] then lbl = LOAD_STAGES[i][2]; break end
+		end
+		if lbl ~= curStage then curStage = lbl; stageLbl.Text = lbl end
+		if elapsed >= 1 then finish() end
+	end)
+
+	task.delay(DUR + 1.0, finish)
 end
 
 -- ==== CREATE WINDOW ====
@@ -2937,7 +3120,7 @@ function AurixUI:CreateWindow(cfg)
 		end
 	end
 
-	-- reveal after banner
+	-- reveal after loading screen with smooth scale-pop morph
 	local function revealWindow()
 		showLoadingBanner(screen, cfg, function()
 			if destroyed then return end
@@ -2946,12 +3129,19 @@ function AurixUI:CreateWindow(cfg)
 			win.Visible = true
 			shadowFrame.Visible = true
 			dragBar.Visible = true
-			win.Size = UDim2.fromOffset(math.max(260, winW - 28), math.max(50, curH - 28))
+			uiScaleObj.Scale = uiScale * 0.90
+			shadowScale.Scale = uiScale * 0.90
+			win.Size = UDim2.fromOffset(winW, curH)
 			win.BackgroundTransparency = 1
+			winStroke.Transparency = 1
 			shadowFrame.BackgroundTransparency = 1
-			tw(win, { Size = UDim2.fromOffset(winW, curH), BackgroundTransparency = 0 }, 0.42)
-			tw(shadowFrame, { BackgroundTransparency = C.isLight and 0.78 or 0.55 }, 0.45)
-			tw(dragCosmetic, { BackgroundTransparency = 0.65 }, 0.4)
+			dragCosmetic.BackgroundTransparency = 1
+			spring(uiScaleObj, { Scale = uiScale }, 0.46)
+			spring(shadowScale, { Scale = uiScale }, 0.46)
+			tw(win, { BackgroundTransparency = 0 }, 0.4)
+			tw(winStroke, { Transparency = C.strokeTrans }, 0.42)
+			tw(shadowFrame, { BackgroundTransparency = C.isLight and 0.78 or 0.55 }, 0.46)
+			tw(dragCosmetic, { BackgroundTransparency = 0.65 }, 0.44)
 		end)
 		track(UserInputService.InputBegan:Connect(function(i, gp)
 			if gp then return end
@@ -2960,7 +3150,7 @@ function AurixUI:CreateWindow(cfg)
 			end
 		end))
 		if not isMobDevice then
-			task.delay(1.8, function()
+			task.delay(2.5, function()
 				if not destroyed then
 					notify(title, "Press " .. tostring(toggleKey.Name) .. " to toggle", C.accent, 2.8)
 				end
