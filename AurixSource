@@ -256,6 +256,8 @@ local autoSave = false
 local CONFIG_FOLDER = "AurixUI_Configs"
 local CONFIG_FILE = nil
 local savedSnapshot = nil
+local activeWindow = nil
+AurixUI.Flags = flags
 
 -- ==== HELPERS ====
 local function newInst(cls, props)
@@ -1738,6 +1740,12 @@ function AurixUI:CreateWindow(cfg)
 	elseif sessionData and sessionData.liveGradient ~= nil then
 		liveGradient = sessionData.liveGradient == true
 	end
+	local showHUD = false
+	if cfg.ActiveHUD ~= nil then
+		showHUD = cfg.ActiveHUD == true
+	elseif sessionData and sessionData.showHUD ~= nil then
+		showHUD = sessionData.showHUD == true
+	end
 
 	-- main window
 	local win = newInst("Frame", {
@@ -2742,7 +2750,8 @@ function AurixUI:CreateWindow(cfg)
 		end
 	end
 
-	local setMacToggleUI, setFxToggleUI, setGradToggleUI
+	local setMacToggleUI, setFxToggleUI, setGradToggleUI, setHudToggleUI
+	local syncHUDVisibility
 	local function setMacButtons(on)
 		macButtons = (on == true)
 		applyMacButtons(true)
@@ -2762,10 +2771,17 @@ function AurixUI:CreateWindow(cfg)
 		if setGradToggleUI then setGradToggleUI(liveGradient) end
 		if saveSession then saveSession() end
 	end
+	local function setHUDVisible(on)
+		showHUD = (on == true)
+		if syncHUDVisibility then syncHUDVisibility() end
+		if setHudToggleUI then setHudToggleUI(showHUD) end
+		if saveSession then saveSession() end
+	end
 
 	setMacToggleUI  = makeMiniToggle("MacBook Buttons", macButtons, function(v) setMacButtons(v) end)
 	setFxToggleUI   = makeMiniToggle("Background Effect", bgEffect, function(v) setBgEffect(v) end)
 	setGradToggleUI = makeMiniToggle("Animated Gradient", liveGradient, function(v) setGradient(v) end)
+	setHudToggleUI  = makeMiniToggle("Active HUD", showHUD, function(v) setHUDVisible(v) end)
 	makeMiniToggle("Streamer Mode", anonymous, function(v)
 		anonymous = v
 		dispLbl.Text = anonymous and "Anonymous" or me.DisplayName
@@ -3136,7 +3152,7 @@ function AurixUI:CreateWindow(cfg)
 					tab = activeTab and tostring(activeTab.tabName) or nil,
 					scale = uiScale, manualScale = manualScale ~= nil,
 					theme = currentTheme, compact = minimized,
-					macButtons = macButtons, bgEffect = bgEffect, liveGradient = liveGradient,
+					macButtons = macButtons, bgEffect = bgEffect, liveGradient = liveGradient, showHUD = showHUD,
 				}))
 			end)
 		end)
@@ -3352,7 +3368,7 @@ function AurixUI:CreateWindow(cfg)
 			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then hdrag = false end
 		end))
 
-		if hcfg.StartHidden == true then hudPanel.Visible = false end
+		hudPanel.Visible = showHUD and (hcfg.StartHidden ~= true)
 		local ctrl = {}
 		function ctrl:Add(key, name, get, set, value) hudItems[tostring(key)] = { name = name, get = get, set = set, value = value }; refreshHUD() end
 		function ctrl:Remove(key)
@@ -3362,8 +3378,14 @@ function AurixUI:CreateWindow(cfg)
 			refreshHUD()
 		end
 		function ctrl:Refresh() refreshHUD() end
-		function ctrl:SetVisible(v) hudPanel.Visible = (v == true); if v then refreshHUD() end end
-		function ctrl:IsVisible() return hudPanel.Visible end
+		function ctrl:SetVisible(v)
+			showHUD = (v == true)
+			if hudPanel then hudPanel.Visible = showHUD end
+			if setHudToggleUI then setHudToggleUI(showHUD) end
+			if showHUD then refreshHUD() end
+			if saveSession then saveSession() end
+		end
+		function ctrl:IsVisible() return hudPanel and hudPanel.Visible or false end
 		function ctrl:GetPanel() return hudPanel end
 		function ctrl:Destroy() if hudPanel then hudPanel:Destroy() end; hudPanel = nil; hudList = nil; hudPills = {} end
 		refreshHUD()
@@ -3378,6 +3400,17 @@ function AurixUI:CreateWindow(cfg)
 			if ok then hudCtrl = ctrl end
 		end
 		refreshHUD()
+	end
+
+	syncHUDVisibility = function()
+		if showHUD and not hudPanel then
+			local ok, ctrl = pcall(buildHUD)
+			if ok then hudCtrl = ctrl end
+		end
+		if hudPanel then
+			hudPanel.Visible = showHUD
+			if showHUD then refreshHUD() end
+		end
 	end
 
 	-- ==== WINDOW OBJECT ====
@@ -3697,7 +3730,7 @@ function AurixUI:CreateWindow(cfg)
 		function tabObj:CreateToggle(cfg2)
 			cfg2 = cfg2 or {}
 			local val = cfg2.CurrentValue or false
-			local sendNotif = cfg2.SendNotification ~= false
+			local sendNotif = cfg2.SendNotification == true
 			if cfg2.Flag then flags[cfg2.Flag] = val end
 			local row, rowStroke = makeRow(cfg2.Description and 52 or 44)
 			rowLabel(cfg2.Name or "Toggle", cfg2.Description, row, 72)
@@ -3807,7 +3840,7 @@ function AurixUI:CreateWindow(cfg)
 		-- ==== BUTTON (whole row clickable + action pill) ====
 		function tabObj:CreateButton(cfg2)
 			cfg2 = cfg2 or {}
-			local sendNotif = cfg2.SendNotification ~= false
+			local sendNotif = cfg2.SendNotification == true
 			local row, rowStroke = makeRow(cfg2.Description and 52 or 44)
 			local mainLbl = rowLabel(cfg2.Name or "Button", cfg2.Description, row, 92)
 			table.insert(allElements, { frame = row, name = cfg2.Name or "Button" })
@@ -4083,7 +4116,7 @@ function AurixUI:CreateWindow(cfg)
 				if type(co) == "table" then co = co[1] end
 				selected = co or options[1] or ""
 			end
-			local sendNotif = cfg2.SendNotification ~= false
+			local sendNotif = cfg2.SendNotification == true
 			if cfg2.Flag then flags[cfg2.Flag] = selected end
 			local open = false
 
@@ -4642,8 +4675,13 @@ function AurixUI:CreateWindow(cfg)
 		function tabObj:CreateKeybind(cfg2)
 			cfg2 = cfg2 or {}
 			local curKey = cfg2.CurrentKey
-			if not curKey and type(cfg2.CurrentKeybind) == "string" then
-				pcall(function() curKey = Enum.KeyCode[cfg2.CurrentKeybind:upper()] end)
+			if not curKey and typeof(cfg2.CurrentKeybind) == "EnumItem" then
+				curKey = cfg2.CurrentKeybind
+			elseif not curKey and type(cfg2.CurrentKeybind) == "string" then
+				pcall(function() curKey = Enum.KeyCode[cfg2.CurrentKeybind] end)
+				if not curKey then
+					pcall(function() curKey = Enum.KeyCode[cfg2.CurrentKeybind:upper()] end)
+				end
 			end
 			local listening, listenAt = false, 0
 			if cfg2.Flag then flags[cfg2.Flag] = curKey and curKey.Name or "None" end
@@ -5205,6 +5243,8 @@ function AurixUI:CreateWindow(cfg)
 		return hudCtrl
 	end
 	function winObj:GetHUD() return hudCtrl end
+	function winObj:SetHUDVisible(on) setHUDVisible(on == true) end
+	function winObj:IsHUDVisible() return showHUD end
 	function winObj:SetCompact(on) setCompact(on == true) end
 	function winObj:IsCompact() return minimized end
 	function winObj:SetMacButtons(on) setMacButtons(on == true) end
@@ -5229,10 +5269,34 @@ function AurixUI:CreateWindow(cfg)
 		destroyed = true
 		disconnectAll()
 		_G.__AurixUI_Running = nil
+		if activeWindow == winObj then activeWindow = nil end
 		if screen.Parent then screen:Destroy() end
 	end
 
+	activeWindow = winObj
 	return winObj
+end
+
+function AurixUI:Notify(title2, content2, col2)
+	if activeWindow then return activeWindow:Notify(title2, content2, col2) end
+end
+function AurixUI:LoadConfiguration()
+	if activeWindow then return activeWindow:LoadConfiguration() end
+	return false
+end
+function AurixUI:SaveConfiguration()
+	if activeWindow then return activeWindow:SaveConfiguration() end
+	return false
+end
+function AurixUI:Destroy()
+	if activeWindow then activeWindow:Destroy() end
+end
+function AurixUI:SetVisibility(visible)
+	if activeWindow then activeWindow:SetVisibility(visible) end
+end
+function AurixUI:IsVisible()
+	if activeWindow then return activeWindow:IsVisible() end
+	return false
 end
 
 return AurixUI
